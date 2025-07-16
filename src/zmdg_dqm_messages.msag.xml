@@ -1,0 +1,49 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<abapGit version="v1.0.0" serializer="LCL_OBJECT_MSAG" serializer_version="v1.0.0">
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <T100A>
+    <ARBGB>ZMDG_DQM_MESSAGES</ARBGB>
+    <MASTERLANG>E</MASTERLANG>
+   </T100A>
+   <T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZMDG_DQM_MESSAGES</ARBGB>
+     <MSGNR>000</MSGNR>
+     <TEXT>The suggested matnr is &amp;1</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZMDG_DQM_MESSAGES</ARBGB>
+     <MSGNR>001</MSGNR>
+     <TEXT>Both CR ID and Username caanot be filled at the same time</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZMDG_DQM_MESSAGES</ARBGB>
+     <MSGNR>002</MSGNR>
+     <TEXT>CR ID cannot be used with other parameters</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZMDG_DQM_MESSAGES</ARBGB>
+     <MSGNR>003</MSGNR>
+     <TEXT>Cancellation with respect to USERNAME requires Data Model</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZMDG_DQM_MESSAGES</ARBGB>
+     <MSGNR>004</MSGNR>
+     <TEXT>CR Type: &amp;1 has different model from model selection</TEXT>
+    </T100>
+    <T100>
+     <SPRSL>E</SPRSL>
+     <ARBGB>ZMDG_DQM_MESSAGES</ARBGB>
+     <MSGNR>005</MSGNR>
+     <TEXT>CR Type: &amp;1 cannot be used in this process</TEXT>
+    </T100>
+   </T100>
+  </asx:values>
+ </asx:abap>
+</abapGit>

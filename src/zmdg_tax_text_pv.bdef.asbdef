@@ -1,0 +1,8 @@
+projection;
+
+define behavior for ZMDG_TAX_TEXT_PV alias TaxonomyProjection
+{
+  use create;
+  use update;
+  use delete;
+}

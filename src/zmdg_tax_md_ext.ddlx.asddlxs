@@ -1,0 +1,82 @@
+@Metadata.layer: #CORE
+@UI: {
+    headerInfo: {
+        typeName: 'Taxonomy Text',
+        typeNamePlural: 'Taxonomy Text Records',
+        title: { type: #STANDARD, label: 'Taxonomy Attribute', value: 'attribute' }
+    },
+    presentationVariant: [ {
+        sortOrder: [ { by: 'top_node', direction: #ASC },
+                     { by: 'sub_node1', direction: #ASC },
+                     { by: 'sub_node2', direction: #ASC } ]
+    } ]
+}
+annotate view ZMDG_TAX_TEXT_PV with
+{
+  @UI.facet: [
+      { id:              'TaxonomyDetails',
+        purpose:         #STANDARD,
+        type:            #IDENTIFICATION_REFERENCE,
+        label:           'Taxonomy Text Details',
+        position:        10 }
+  ]
+
+  @UI: {
+         lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10, label: 'Top Node' } ],
+         selectionField: [ { position: 10 } ] }
+  top_node;
+
+  @UI: {
+         lineItem:       [ { position: 30 } ],
+         identification: [ { position: 30, label: 'Sub Node 1' } ],
+         selectionField: [ { position: 30 } ] }
+  sub_node1;
+
+  @UI: {
+         lineItem:       [ { position: 45 } ],
+         identification: [ { position: 45, label: 'Sub Node 2' } ],
+         selectionField: [ { position: 45 } ] }
+  sub_node2;
+
+  @UI: {
+         lineItem:       [ { position: 60 } ],
+         identification: [ { position: 60, label: 'Attribute' } ],
+         selectionField: [ { position: 60 } ] }
+  attribute;
+
+  @UI: {
+         lineItem:       [ { position: 75 } ],
+         identification: [ { position: 75, label: 'Attribute Type' } ],
+         selectionField: [ { position: 75 } ] }
+  attr_type;
+
+  @UI: {
+         lineItem:       [ { position: 95 } ],
+         identification: [ { position: 95, label: 'UI Name' } ],
+         selectionField: [ { position: 95 } ] }
+  ui_name;
+
+  @UI: {
+         lineItem:       [ { position: 110 } ],
+         identification: [ { position: 110, label: 'UI Label' } ] }
+  ui_label;
+
+  @UI: {
+         lineItem:       [ { position: 125 } ],
+         identification: [ { position: 125, label: 'Read Only' } ] }
+  ui_read_only;
+
+  @UI: {
+         lineItem:       [ { position: 140 } ],
+         identification: [ { position: 140, label: 'Mandatory' } ] }
+  ui_mandatory;
+
+  @UI: {
+         lineItem:       [ { position: 150 } ],
+         identification: [ { position: 150, label: 'Display Type' } ],
+         selectionField: [ { position: 150 } ]
+  }
+  @Consumption.valueHelpDefinition: [{ entity: { element: 'display_type' , name: 'ZMDG_VALUE_HELP'  } }]
+  display_type;
+}

@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<abapGit version="v1.0.0" serializer="LCL_OBJECT_SICF" serializer_version="v1.0.0">
+ <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
+  <asx:values>
+   <URL>/sap/bc/webdynpro/sap/MES100000000339/</URL>
+   <ICFSERVICE>
+    <ICF_NAME>MES100000000339</ICF_NAME>
+    <ORIG_NAME>MES100000000339</ORIG_NAME>
+    <ICFALTNME>ZMDG_OVP_APPL_DYN_FORM_TEST</ICFALTNME>
+   </ICFSERVICE>
+   <ICFDOCU>
+    <ICF_NAME>MES100000000339</ICF_NAME>
+    <ICF_LANGU>E</ICF_LANGU>
+    <ICF_DOCU>Web Dynpro Application for Dynamic Form UIBB TEst</ICF_DOCU>
+   </ICFDOCU>
+  </asx:values>
+ </asx:abap>
+</abapGit>

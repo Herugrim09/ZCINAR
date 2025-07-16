@@ -1,0 +1,81 @@
+@Metadata.layer: #CORE
+@UI: {
+    headerInfo: {
+        typeName: 'Taxonomy Text',
+        typeNamePlural: 'Taxonomy Text Records',
+        title: { type: #STANDARD, label: 'Taxonomy Attribute', value: 'attribute' }
+    },
+    presentationVariant: [{
+        sortOrder: [{ by: 'top_node', direction: #ASC },
+                    { by: 'sub_node1', direction: #ASC },
+                    { by: 'sub_node2', direction: #ASC } ]
+    }]
+}
+annotate view ZMDG_TAX_TEXT_VW with
+{
+
+
+  @UI.facet: [
+      { id:              'TaxonomyDetails',
+        purpose:         #STANDARD,
+        type:            #IDENTIFICATION_REFERENCE,
+        label:           'Taxonomy Text Details',
+        position:        10 }
+  ]
+
+  @UI: {
+         lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10, label: 'Top Node' } ],
+         selectionField: [ { position: 10 } ] }
+  top_node;
+
+  @UI: {
+         lineItem:       [ { position: 20 } ],
+         identification: [ { position: 20, label: 'Sub Node 1' } ],
+         selectionField: [ { position: 20 } ] }
+  sub_node1;
+
+  @UI: {
+         lineItem:       [ { position: 30 } ],
+         identification: [ { position: 30, label: 'Sub Node 2' } ],
+         selectionField: [ { position: 30 } ] }
+  sub_node2;
+
+  @UI: {
+         lineItem:       [ { position: 40 } ],
+         identification: [ { position: 40, label: 'Attribute' } ],
+         selectionField: [ { position: 40 } ] }
+  attribute;
+
+  @UI: {
+         lineItem:       [ { position: 50 } ],
+         identification: [ { position: 50, label: 'Attribute Type' } ],
+         selectionField: [ { position: 50 } ] }
+  attr_type;
+
+  @UI: {
+         lineItem:       [ { position: 60 } ],
+         identification: [ { position: 60, label: 'UI Name' } ],
+         selectionField: [ { position: 60 } ] }
+  ui_name;
+
+  @UI: {
+         lineItem:       [ { position: 70 } ],
+         identification: [ { position: 70, label: 'UI Label' } ] }
+  ui_label;
+
+  @UI: {
+         lineItem:       [ { position: 80 } ],
+         identification: [ { position: 80, label: 'Read Only' } ] }
+  ui_read_only;
+
+  @UI: {
+         lineItem:       [ { position: 90 } ],
+         identification: [ { position: 90, label: 'Mandatory' } ] }
+  ui_mandatory;
+
+  @UI: {
+         lineItem:       [ { position: 100 } ],
+         identification: [ { position: 100, label: 'Display Type' } ] }
+  display_type;
+}

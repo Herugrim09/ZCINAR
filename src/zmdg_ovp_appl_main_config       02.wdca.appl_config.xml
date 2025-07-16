@@ -1,0 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Application Name="ZMDG_OVP_APPL_MAIN" ConfId="ZMDG_OVP_APPL_MAIN_CONFIG" ConfType="02" ConfVar="">
+ <Component Name="FPM_OVP_COMPONENT" Usage="ZMDG_OVP_APPL_MAIN" ConfType="00" ConfId="ZMDG_OVP_CONFIG_MAIN" ConfVar="" Interface="False"/>
+</Application>

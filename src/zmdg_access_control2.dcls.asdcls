@@ -1,0 +1,10 @@
+@EndUserText.label: 'Access Control for Taxonomy'
+@MappingRole: true
+define role ZMDG_ACCESS_CONTROL2 {
+    grant
+        select
+            on
+                ZMDG_TAX_TEXT_VW;
+                  
+                        
+}

@@ -1,0 +1,88 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Component Name="FPM_FORM_UIBB" ConfId="ZMDG_FORM_UIBB_CAT_SELECTION" ConfType="00" ConfVar="">
+ <Node Name="CONFIGURATION_CONTEXT" SimpleFormat="true">
+  <Item Index="000001" SimpleFormat="true">
+   <Node Name="FORM" SimpleFormat="true">
+    <Item Index="000001" SimpleFormat="true">
+     <FEEDER>ZCL_TAX_CATEGORY_UIBB</FEEDER>
+     <Node Name="CTXT_MENU" SimpleFormat="true"/>
+     <Node Name="GROUP" SimpleFormat="true">
+      <Item Index="000001" SimpleFormat="true">
+       <ELEMENT_ID Final="5 ">_GENP_000C292C36471EEFB4E902CE434BF145</ELEMENT_ID>
+       <TITLE Transl="true">1</TITLE>
+       <INDEX>1</INDEX>
+       <GROUP_TYPE>F1</GROUP_TYPE>
+       <LOCATION/>
+       <CTXT_MENU_ID/>
+       <INSTANCE_STYLE/>
+       <Node Name="BUTTON_ROW" SimpleFormat="true"/>
+       <Node Name="DROP" SimpleFormat="true"/>
+       <Node Name="ELEMENT" SimpleFormat="true">
+        <Item Index="000001" SimpleFormat="true">
+         <ELEMENT_ID Final="5 ">_GENP_000C292C36471EEFB4E903BC62EC1145</ELEMENT_ID>
+         <NAME>MAIN</NAME>
+         <DISPLAY_TYPE>IN</DISPLAY_TYPE>
+         <ROW>1</ROW>
+         <VISIBILITY_LABEL>02</VISIBILITY_LABEL>
+         <COLUMN>1</COLUMN>
+         <TEXT Transl="true">2</TEXT>
+         <SPECIAL_PROPERTIES/>
+         <WIDTH/>
+         <TAG_ACTIVE/>
+         <TAG/>
+         <TOOLTIP Transl="true"/>
+         <EXPLANATION Transl="true"/>
+         <CTXT_MENU_ID/>
+         <INSTANCE_STYLE/>
+         <LABEL_INSTANCE_STYLE/>
+         <Node Name="ELEMENT_ACTION" SimpleFormat="true"/>
+        </Item>
+        <Item Index="000002" SimpleFormat="true">
+         <ELEMENT_ID Final="5 ">_GENP_000C292C36471EEFB4E9049EE38C9145</ELEMENT_ID>
+         <NAME>SUB1</NAME>
+         <DISPLAY_TYPE>DD</DISPLAY_TYPE>
+         <ROW>2</ROW>
+         <VISIBILITY_LABEL>02</VISIBILITY_LABEL>
+         <COLUMN>1</COLUMN>
+         <TEXT Transl="true">3</TEXT>
+         <SPECIAL_PROPERTIES/>
+         <WIDTH/>
+         <TAG_ACTIVE/>
+         <TAG/>
+         <TOOLTIP Transl="true"/>
+         <EXPLANATION Transl="true"/>
+         <CTXT_MENU_ID/>
+         <INSTANCE_STYLE/>
+         <LABEL_INSTANCE_STYLE/>
+         <Node Name="ELEMENT_ACTION" SimpleFormat="true"/>
+        </Item>
+        <Item Index="000003" SimpleFormat="true">
+         <ELEMENT_ID Final="5 ">_GENP_000C292C36471EEFB4E9049EE38CB145</ELEMENT_ID>
+         <NAME>SUB2</NAME>
+         <DISPLAY_TYPE>DD</DISPLAY_TYPE>
+         <ROW>3</ROW>
+         <VISIBILITY_LABEL>02</VISIBILITY_LABEL>
+         <COLUMN>1</COLUMN>
+         <TEXT Transl="true">4</TEXT>
+         <SPECIAL_PROPERTIES/>
+         <WIDTH/>
+         <TAG_ACTIVE/>
+         <TAG/>
+         <TOOLTIP Transl="true"/>
+         <EXPLANATION Transl="true"/>
+         <CTXT_MENU_ID/>
+         <INSTANCE_STYLE/>
+         <LABEL_INSTANCE_STYLE/>
+         <Node Name="ELEMENT_ACTION" SimpleFormat="true"/>
+        </Item>
+       </Node>
+       <Node Name="MELTING_GROUP" SimpleFormat="true"/>
+      </Item>
+     </Node>
+     <Node Name="PARAMETER" SimpleFormat="true"/>
+     <Node Name="QUICKVIEW" SimpleFormat="true"/>
+    </Item>
+   </Node>
+  </Item>
+ </Node>
+</Component>

@@ -1,0 +1,29 @@
+managed; // implementation in class zbp_mdg_tax_text_vw unique;
+
+define behavior for ZMDG_TAX_TEXT_VW
+persistent table zmdg_tax_text
+lock master
+//authorization master ( instance )
+//etag master <field_name>
+{
+
+  field ( readonly : update ) top_node, sub_node1, sub_node2, ui_name;
+
+  create;
+  update;
+  delete;
+
+  mapping for zmdg_tax_text
+    {
+      top_node     = top_node;
+      sub_node1    = sub_node1;
+      sub_node2    = sub_node2;
+      attribute    = attribute;
+      attr_type    = attr_type;
+      ui_name      = ui_name;
+      ui_label     = ui_label;
+      ui_read_only = ui_read_only;
+      ui_mandatory = ui_mandatory;
+      display_type = display_type;
+    }
+}

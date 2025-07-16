@@ -1,0 +1,4 @@
+@EndUserText.label: 'Projection View''s Service Definition'
+define service ZMDG_TAX_TEXT_SD3 {
+  expose ZMDG_TAX_TEXT_PV;
+}

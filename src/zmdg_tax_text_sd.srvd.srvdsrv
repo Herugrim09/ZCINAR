@@ -1,0 +1,4 @@
+@EndUserText.label: 'Service Definition for Taxonomy'
+define service ZMDG_TAX_TEXT_SD {
+  expose ZMDG_TAX_TEXT_VW as Taxonomy;
+}

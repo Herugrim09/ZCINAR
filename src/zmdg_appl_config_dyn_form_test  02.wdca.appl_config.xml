@@ -1,0 +1,4 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Application Name="ZMDG_OVP_APPL_DYN_FORM_TEST" ConfId="ZMDG_APPL_CONFIG_DYN_FORM_TEST" ConfType="02" ConfVar="">
+ <Component Name="FPM_OVP_COMPONENT" Usage="ZMDG_OVP_APPL_DYN_FORM_TEST" ConfType="00" ConfId="ZMDG_APPL_CONFIG_DYN_FORM_TEST" ConfVar="" Interface="False"/>
+</Application>

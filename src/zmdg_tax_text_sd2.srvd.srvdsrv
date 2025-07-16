@@ -1,0 +1,4 @@
+@EndUserText.label: '2'
+define service ZMDG_TAX_TEXT_SD2 {
+  expose ZMDG_TAX_TEXT_VW2;
+}
