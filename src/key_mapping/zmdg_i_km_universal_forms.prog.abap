@@ -10,21 +10,30 @@
 FORM load_object_types.
 
   " Load object types into global table
-  gt_object_types = lcl_data_loader=>load_object_types( ).
+  lcl_data_loader=>load_object_types(
+    IMPORTING
+      et_object_types = gt_object_types
+  ).
 
 ENDFORM.
 
 FORM load_ids_types.
 
   " Load ID scheme types into global table
-  gt_ids_types = lcl_data_loader=>load_ids_types( ).
+  lcl_data_loader=>load_ids_types(
+    IMPORTING
+      et_ids_types = gt_ids_types
+  ).
 
 ENDFORM.
 
 FORM load_business_systems.
 
   " Load business systems into global table
-  gt_business_systems = lcl_data_loader=>load_business_systems( ).
+  lcl_data_loader=>load_business_systems(
+    IMPORTING
+      et_systems = gt_business_systems
+  ).
 
 ENDFORM.
 
@@ -241,7 +250,10 @@ FORM refresh_display.
   " Reload data based on current operation mode
   CASE gv_operation_mode.
     WHEN gc_mode_display.
-      gt_key_mappings_display = lo_processor->process_display( ).
+      lo_processor->process_display(
+        IMPORTING
+          et_results = gt_key_mappings_display
+      ).
   ENDCASE.
 
   " Refresh ALV
@@ -254,7 +266,8 @@ ENDFORM.
 FORM export_data.
 
   DATA: lv_file_path TYPE string,
-        lv_filename  TYPE string.
+        lv_filename  TYPE string,
+        lv_fullpath  TYPE string.
 
   " Get file path from user
   CALL METHOD cl_gui_frontend_services=>file_save_dialog
@@ -265,6 +278,7 @@ FORM export_data.
     CHANGING
       filename          = lv_filename
       path              = lv_file_path
+      fullpath          = lv_fullpath
     EXCEPTIONS
       OTHERS            = 1.
 
@@ -286,7 +300,10 @@ FORM import_data.
           lt_input     TYPE gtty_key_mapping_input.
 
     CREATE OBJECT lo_processor.
-    lt_input = lo_processor->process_file_upload( ).
+    lo_processor->process_file_upload(
+      IMPORTING
+        et_input = lt_input
+    ).
 
     " Show import preview
     PERFORM show_import_preview USING lt_input.
@@ -300,7 +317,10 @@ FORM generate_template.
 
   CREATE OBJECT lo_processor.
 
-  DATA(lv_success) = lo_processor->generate_template( ).
+  lo_processor->generate_template(
+    IMPORTING
+      ev_success = DATA(lv_success)
+  ).
 
   IF lv_success = abap_true.
     MESSAGE 'Template generated successfully' TYPE 'S'.

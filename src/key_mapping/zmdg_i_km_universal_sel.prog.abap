@@ -18,22 +18,22 @@ SELECTION-SCREEN END OF BLOCK b1.
 SELECTION-SCREEN BEGIN OF BLOCK b2 WITH FRAME TITLE TEXT-002.
   SELECTION-SCREEN BEGIN OF LINE.
     PARAMETERS: rb_disp RADIOBUTTON GROUP op1 DEFAULT 'X' USER-COMMAND mode.
-    SELECTION-SCREEN COMMENT 3(25) TEXT-010.
+    SELECTION-SCREEN COMMENT 3(25) TEXT-006.
   SELECTION-SCREEN END OF LINE.
 
   SELECTION-SCREEN BEGIN OF LINE.
     PARAMETERS: rb_crt RADIOBUTTON GROUP op1.
-    SELECTION-SCREEN COMMENT 3(25) TEXT-011.
+    SELECTION-SCREEN COMMENT 3(25) TEXT-007.
   SELECTION-SCREEN END OF LINE.
 
   SELECTION-SCREEN BEGIN OF LINE.
     PARAMETERS: rb_upd RADIOBUTTON GROUP op1.
-    SELECTION-SCREEN COMMENT 3(25) TEXT-012.
+    SELECTION-SCREEN COMMENT 3(25) TEXT-008.
   SELECTION-SCREEN END OF LINE.
 
   SELECTION-SCREEN BEGIN OF LINE.
     PARAMETERS: rb_del RADIOBUTTON GROUP op1.
-    SELECTION-SCREEN COMMENT 3(25) TEXT-013.
+    SELECTION-SCREEN COMMENT 3(25) TEXT-009.
   SELECTION-SCREEN END OF LINE.
 SELECTION-SCREEN END OF BLOCK b2.
 
@@ -51,7 +51,7 @@ SELECTION-SCREEN END OF BLOCK b3.
 " Block 4: File Upload Options (Visible for Create/Update/Delete Modes)
 "----------------------------------------------------------------------
 SELECTION-SCREEN BEGIN OF BLOCK b4 WITH FRAME TITLE TEXT-004.
-  PARAMETERS: p_file TYPE localfile MODIF ID upl.
+  PARAMETERS: p_file TYPE string MODIF ID upl.
 
   SELECTION-SCREEN BEGIN OF LINE.
     SELECTION-SCREEN COMMENT 1(15) FOR FIELD p_format MODIF ID upl.
@@ -126,9 +126,20 @@ AT SELECTION-SCREEN ON p_idsc.
 
   " Final validation before processing
 
-AT SELECTION-SCREEN.
-  PERFORM validate_selection_screen.
+*AT SELECTION-SCREEN.
+*  PERFORM validate_selection_screen.
+*
 
+START-OF-SELECTION.
+  " Validate file path only when actually executing
+  IF gv_operation_mode = gc_mode_create OR
+     gv_operation_mode = gc_mode_update OR
+     gv_operation_mode = gc_mode_delete.
+    IF gv_file_path IS INITIAL.
+      MESSAGE e003(zmdg_km) WITH 'File path is required for' gv_operation_mode 'operation'.
+      RETURN.
+    ENDIF.
+  ENDIF.
   "----------------------------------------------------------------------
   " Screen Control Forms
   "----------------------------------------------------------------------
@@ -150,10 +161,20 @@ FORM control_screen_visibility.
   LOOP AT SCREEN.
     CASE screen-group1.
       WHEN 'DIS'. " Display mode fields
-        screen-active = COND #( WHEN gv_operation_mode = gc_mode_display THEN 1 ELSE 0 ).
+        IF gv_operation_mode = gc_mode_display.
+          screen-active = 1.
+        ELSE.
+          screen-active = 0.
+        ENDIF.
 
       WHEN 'UPL'. " Upload mode fields
-        screen-active = COND #( WHEN gv_operation_mode IN ('C', 'U', 'X') THEN 1 ELSE 0 ).
+        IF gv_operation_mode = gc_mode_create OR
+           gv_operation_mode = gc_mode_update OR
+           gv_operation_mode = gc_mode_delete.
+          screen-active = 1.
+        ELSE.
+          screen-active = 0.
+        ENDIF.
 
       WHEN 'OPT'. " Optional fields
         screen-active = 1.
@@ -165,7 +186,12 @@ ENDFORM.
 
 FORM f4_object_type CHANGING cv_object_type TYPE mdg_object_type_code_bs.
 
-  DATA: lt_object_types TYPE gtty_object_type_list,
+  TYPES: BEGIN OF ty_f4_object_type,
+           object_type_code TYPE mdg_object_type_code_bs,
+           description      TYPE mdg_object_type_code_desc_bs,
+         END OF ty_f4_object_type.
+
+  DATA: lt_object_types TYPE TABLE OF ty_f4_object_type,
         lt_return_tab   TYPE TABLE OF ddshretval,
         lwa_return      TYPE ddshretval.
 
@@ -174,7 +200,11 @@ FORM f4_object_type CHANGING cv_object_type TYPE mdg_object_type_code_bs.
     PERFORM load_object_types.
   ENDIF.
 
-  lt_object_types = gt_object_types.
+  " Convert to local table structure
+  LOOP AT gt_object_types INTO DATA(lwa_otc).
+    APPEND VALUE ty_f4_object_type( object_type_code = lwa_otc-object_type_code
+                                   description = lwa_otc-description ) TO lt_object_types.
+  ENDLOOP.
 
   " Prepare value help data
   CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
@@ -204,7 +234,13 @@ ENDFORM.
 FORM f4_ids_type USING iv_object_type TYPE mdg_object_type_code_bs
                  CHANGING cv_ids_type TYPE mdg_ids_type_code_bs.
 
-  DATA: lt_ids_types  TYPE gtty_ids_type_list,
+  TYPES: BEGIN OF ty_f4_ids_type,
+           ids_type_code    TYPE mdg_ids_type_code_bs,
+           object_type_code TYPE mdg_object_type_code_bs,
+           description      TYPE mdg_ids_type_code_desc_bs,
+         END OF ty_f4_ids_type.
+
+  DATA: lt_ids_types  TYPE TABLE OF ty_f4_ids_type,
         lt_return_tab TYPE TABLE OF ddshretval,
         lwa_return    TYPE ddshretval.
 
@@ -213,8 +249,12 @@ FORM f4_ids_type USING iv_object_type TYPE mdg_object_type_code_bs
     PERFORM load_ids_types.
   ENDIF.
 
-  " Filter by object type
-  lt_ids_types = FILTER #( gt_ids_types WHERE object_type_code = iv_object_type ).
+  " Filter by object type and convert to local structure
+  LOOP AT gt_ids_types INTO DATA(lwa_ids) WHERE object_type_code = iv_object_type.
+    APPEND VALUE ty_f4_ids_type( ids_type_code = lwa_ids-ids_type_code
+                                object_type_code = lwa_ids-object_type_code
+                                description = lwa_ids-description ) TO lt_ids_types.
+  ENDLOOP.
 
   IF lt_ids_types IS INITIAL.
     MESSAGE 'No ID scheme types found for selected object type' TYPE 'I'.
@@ -246,7 +286,7 @@ FORM f4_ids_type USING iv_object_type TYPE mdg_object_type_code_bs
 
 ENDFORM.
 
-FORM f4_file_path CHANGING cv_file_path TYPE localfile.
+FORM f4_file_path CHANGING cv_file_path TYPE string.
 
   DATA: lt_file_table TYPE filetable,
         lv_rc         TYPE i,
@@ -368,17 +408,22 @@ FORM validate_selection_screen.
   gr_target_id[]     = s_tgtid[].
 
   " Validate file path for upload operations
-  IF gv_operation_mode IN (gc_mode_create, gc_mode_update, gc_mode_delete).
+  IF gv_operation_mode = gc_mode_create OR
+     gv_operation_mode = gc_mode_update OR
+     gv_operation_mode = gc_mode_delete.
+
     IF gv_file_path IS INITIAL.
       MESSAGE e003(zmdg_km) WITH 'File path is required for' gv_operation_mode 'operation'.
     ENDIF.
 
     " Check file exists
+    DATA: lv_exists TYPE abap_bool.
+
     CALL METHOD cl_gui_frontend_services=>file_exist
       EXPORTING
         file                 = gv_file_path
       RECEIVING
-        result               = DATA(lv_exists)
+        result               = lv_exists
       EXCEPTIONS
         cntl_error           = 1
         error_no_gui         = 2

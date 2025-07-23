@@ -32,7 +32,7 @@ FORM create_alv_display.
 
   " Set ALV title
   DATA(lv_title) = |Key Mappings - { gv_object_type_code } ({ lines( gt_key_mappings_display ) } entries)|.
-  go_alv_grid->get_display_settings( )->set_list_header( lv_title ).
+  go_alv_grid->get_display_settings( )->set_list_header( CONV lvc_title( lv_title ) ).
 
   " Display ALV
   go_alv_grid->display( ).
@@ -46,7 +46,7 @@ FORM create_alv_display_preview.
 
   " Override title for preview
   DATA(lv_title) = |Import Preview - { lines( gt_key_mappings_display ) } records|.
-  go_alv_grid->get_display_settings( )->set_list_header( lv_title ).
+  go_alv_grid->get_display_settings( )->set_list_header( CONV lvc_title( lv_title ) ).
 
 ENDFORM.
 
@@ -58,8 +58,9 @@ FORM setup_alv_layout.
   " Set general display settings
   DATA(lo_display) = go_alv_grid->get_display_settings( ).
 
-  " Optimize column width
-  lo_display->set_optimized_column_width( abap_true ).
+
+*  " Optimize column width
+*  lo_display->set_optimized_column_width( abap_true ).
 
   " Enable striped pattern
   lo_display->set_striped_pattern( abap_true ).
@@ -232,24 +233,24 @@ FORM setup_alv_toolbar.
         WHEN gc_mode_display.
           " Display mode buttons
           lo_functions->add_function(
-            id      = gc_fc_create
-            icon    = icon_create
+            name      = gc_fc_create
+            icon    =  CONV string( icon_create )
             text    = 'Create New'
             tooltip = 'Create New Key Mapping'
             position = if_salv_c_function_position=>right_of_salv_functions
           ).
 
           lo_functions->add_function(
-            id      = gc_fc_update
-            icon    = icon_change
+            name      = gc_fc_update
+            icon    = CONV string( icon_change )
             text    = 'Update'
             tooltip = 'Update Selected Mapping'
             position = if_salv_c_function_position=>right_of_salv_functions
           ).
 
           lo_functions->add_function(
-            id      = gc_fc_delete
-            icon    = icon_delete
+            name      = gc_fc_delete
+            icon    = CONV string( icon_delete )
             text    = 'Delete'
             tooltip = 'Delete Selected Mappings'
             position = if_salv_c_function_position=>right_of_salv_functions
@@ -258,8 +259,8 @@ FORM setup_alv_toolbar.
         WHEN OTHERS.
           " Processing mode buttons
           lo_functions->add_function(
-            id      = gc_fc_validate
-            icon    = icon_check
+            name      = gc_fc_validate
+            icon    = CONV string( icon_check )
             text    = 'Validate'
             tooltip = 'Validate Current Data'
             position = if_salv_c_function_position=>right_of_salv_functions
@@ -268,32 +269,32 @@ FORM setup_alv_toolbar.
 
       " Common buttons for all modes
       lo_functions->add_function(
-        id      = gc_fc_refresh
-        icon    = icon_refresh
+        name     = gc_fc_refresh
+        icon    = CONV string( icon_refresh )
         text    = 'Refresh'
         tooltip = 'Refresh Display'
         position = if_salv_c_function_position=>right_of_salv_functions
       ).
 
       lo_functions->add_function(
-        id      = gc_fc_export
-        icon    = icon_export
+        name      = gc_fc_export
+        icon    = CONV string( icon_export )
         text    = 'Export'
         tooltip = 'Export to File'
         position = if_salv_c_function_position=>right_of_salv_functions
       ).
 
       lo_functions->add_function(
-        id      = gc_fc_import
-        icon    = icon_import
+        name     = gc_fc_import
+        icon    = CONV string( icon_import )
         text    = 'Import'
         tooltip = 'Import from File'
         position = if_salv_c_function_position=>right_of_salv_functions
       ).
 
       lo_functions->add_function(
-        id      = gc_fc_template
-        icon    = icon_create
+        name     = gc_fc_template
+        icon    = CONV string( icon_create )
         text    = 'Template'
         tooltip = 'Generate Template File'
         position = if_salv_c_function_position=>right_of_salv_functions
@@ -308,7 +309,7 @@ ENDFORM.
 "----------------------------------------------------------------------
 " ALV Utility Forms
 "----------------------------------------------------------------------
-FORM get_selected_rows RETURNING VALUE(rt_selected) TYPE salv_t_row.
+FORM get_selected_rows CHANGING rt_selected TYPE salv_t_row.
 
   " Get currently selected rows
   IF go_selections IS BOUND.
@@ -330,7 +331,7 @@ FORM set_alv_title USING iv_title TYPE string.
 
   " Set ALV title
   IF go_alv_grid IS BOUND.
-    go_alv_grid->get_display_settings( )->set_list_header( iv_title ).
+    go_alv_grid->get_display_settings( )->set_list_header( conv LVC_TITLE( iv_title ) ).
   ENDIF.
 
 ENDFORM.
@@ -343,7 +344,7 @@ FORM show_alv_message USING iv_message TYPE string
 
 ENDFORM.
 
-FORM get_alv_selected_data changing ct_selected TYPE gtty_key_mapping_display.
+FORM get_alv_selected_data CHANGING ct_selected TYPE gtty_key_mapping_display.
 
   " Get selected rows data
   DATA(lt_rows) = COND salv_t_row( WHEN go_selections IS BOUND
@@ -365,7 +366,7 @@ FORM validate_alv_selection.
                                        THEN go_selections->get_selected_rows( ) ).
 
   IF lt_selected IS INITIAL.
-    MESSAGE 'Please select at least one row'(d007) TYPE 'I'.
+    MESSAGE 'Please select at least one row'(d07) TYPE 'I'.
   ENDIF.
 
 ENDFORM.

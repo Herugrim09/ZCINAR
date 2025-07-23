@@ -80,7 +80,7 @@ DATA: gr_source_system LIKE RANGE OF gv_object_type_code,
       gr_target_id     LIKE RANGE OF gv_object_type_code.
 
 " File Upload
-DATA: gv_file_path   TYPE localfile,
+DATA: gv_file_path   TYPE string,
       gv_has_header  TYPE abap_bool VALUE abap_true,
       gv_file_format TYPE char4 VALUE 'XLSX'. " XLSX, CSV, TXT
 

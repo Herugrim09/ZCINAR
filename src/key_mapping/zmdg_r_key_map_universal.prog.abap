@@ -103,7 +103,10 @@ FORM process_display_mode.
   CREATE OBJECT lo_processor.
 
   " Process display request
-  gt_key_mappings_display = lo_processor->process_display( ).
+  lo_processor->process_display(
+    IMPORTING
+      et_results = gt_key_mappings_display
+  ).
 
   " Check if any data found
   IF gt_key_mappings_display IS INITIAL.
@@ -123,7 +126,10 @@ FORM process_create_mode.
   CREATE OBJECT lo_processor.
 
   " Process file upload to get input data
-  lt_input = lo_processor->process_file_upload( ).
+  lo_processor->process_file_upload(
+    IMPORTING
+      et_input = lt_input
+  ).
 
   IF lt_input IS INITIAL.
     MESSAGE 'No data found in upload file' TYPE 'E'.
@@ -132,14 +138,26 @@ FORM process_create_mode.
 
   " Validate input data if validation flag is set
   IF gv_validate_only = abap_true.
-    lt_input = lo_processor->validate_input_data( lt_input ).
-    gt_key_mappings_display = lo_processor->convert_to_display_format( lt_input ).
+    lo_processor->validate_input_data(
+      CHANGING
+        ct_input = lt_input ).
+    lo_processor->convert_to_display_format(
+      EXPORTING
+        it_input   = lt_input
+      IMPORTING
+        et_display = gt_key_mappings_display
+    ).
     MESSAGE 'Validation completed - check results for errors' TYPE 'I'.
     RETURN.
   ENDIF.
 
   " Process creation
-  gt_key_mappings_display = lo_processor->process_create( lt_input ).
+  lo_processor->process_create(
+    EXPORTING
+      it_input   = lt_input
+    IMPORTING
+      et_results = gt_key_mappings_display
+  ).
 
   " Show results summary
   DATA: lv_success  TYPE i,
@@ -170,7 +188,10 @@ FORM process_update_mode.
   CREATE OBJECT lo_processor.
 
   " Process file upload to get input data
-  lt_input = lo_processor->process_file_upload( ).
+  lo_processor->process_file_upload(
+    IMPORTING
+      et_input = lt_input
+  ).
 
   IF lt_input IS INITIAL.
     MESSAGE 'No data found in upload file' TYPE 'E'.
@@ -179,14 +200,27 @@ FORM process_update_mode.
 
   " Validate input data if validation flag is set
   IF gv_validate_only = abap_true.
-    lt_input = lo_processor->validate_input_data( lt_input ).
-    gt_key_mappings_display = lo_processor->convert_to_display_format( lt_input ).
+    lo_processor->validate_input_data(
+      CHANGING
+        ct_input = lt_input
+    ).
+    lo_processor->convert_to_display_format(
+      EXPORTING
+        it_input   = lt_input
+      IMPORTING
+        et_display = gt_key_mappings_display
+    ).
     MESSAGE 'Validation completed - check results for errors' TYPE 'I'.
     RETURN.
   ENDIF.
 
   " Process updates
-  gt_key_mappings_display = lo_processor->process_update( lt_input ).
+  lo_processor->process_update(
+    EXPORTING
+      it_input   = lt_input
+    IMPORTING
+      et_results = gt_key_mappings_display
+  ).
 
   MESSAGE 'Update processing completed - check results' TYPE 'I'.
 
@@ -202,7 +236,10 @@ FORM process_delete_mode.
   CREATE OBJECT lo_processor.
 
   " Process file upload to get input data
-  lt_input = lo_processor->process_file_upload( ).
+  lo_processor->process_file_upload(
+    IMPORTING
+      et_input = lt_input
+  ).
 
   IF lt_input IS INITIAL.
     MESSAGE 'No data found in upload file' TYPE 'E'.
@@ -230,14 +267,27 @@ FORM process_delete_mode.
 
   " Validate input data if validation flag is set
   IF gv_validate_only = abap_true.
-    lt_input = lo_processor->validate_input_data( lt_input ).
-    gt_key_mappings_display = lo_processor->convert_to_display_format( lt_input ).
+    lo_processor->validate_input_data(
+      CHANGING
+        ct_input = lt_input
+    ).
+    lo_processor->convert_to_display_format(
+      EXPORTING
+        it_input   = lt_input
+      IMPORTING
+        et_display = gt_key_mappings_display
+    ).
     MESSAGE 'Validation completed - check results for errors' TYPE 'I'.
     RETURN.
   ENDIF.
 
   " Process deletions
-  gt_key_mappings_display = lo_processor->process_delete( lt_input ).
+  lo_processor->process_delete(
+    EXPORTING
+      it_input   = lt_input
+    IMPORTING
+      et_results = gt_key_mappings_display
+  ).
 
   MESSAGE 'Deletion processing completed - check results' TYPE 'I'.
 
@@ -281,14 +331,22 @@ FORM show_import_preview USING it_input TYPE gtty_key_mapping_input.
 
   " Show preview of imported data before processing
   DATA: lo_processor TYPE REF TO lcl_km_processor.
-
+  DATA(lt_validated) = it_input.
   CREATE OBJECT lo_processor.
 
   " Validate the imported data
-  DATA(lt_validated) = lo_processor->validate_input_data( it_input ).
+  lo_processor->validate_input_data(
+    CHANGING
+      ct_input = lt_validated
+  ).
 
   " Convert to display format
-  gt_key_mappings_display = lo_processor->convert_to_display_format( lt_validated ).
+  lo_processor->convert_to_display_format(
+    EXPORTING
+      it_input   = lt_validated
+    IMPORTING
+      et_display = gt_key_mappings_display
+  ).
 
   " Show in ALV with special title
   PERFORM create_alv_display_preview.
@@ -351,7 +409,12 @@ FORM delete_selected_mappings USING it_selected_rows TYPE salv_t_row.
 
   " Process deletions
   CREATE OBJECT lo_processor.
-  DATA(lt_results) = lo_processor->process_delete( lt_input ).
+  lo_processor->process_delete(
+    EXPORTING
+      it_input   = lt_input
+    IMPORTING
+      et_results = DATA(lt_results)
+  ).
 
   " Update display
   LOOP AT lt_results INTO DATA(lwa_result).
@@ -418,7 +481,8 @@ FORM generate_excel_template USING it_template TYPE gtty_key_mapping_input.
 
   " Generate Excel template with headers and sample data
   DATA: lv_file_path TYPE string,
-        lv_filename  TYPE string.
+        lv_filename  TYPE string,
+        lv_fullpath type string.
 
   " Build filename
   lv_filename = |KeyMapping_Template_{ gv_object_type_code }_{ sy-datum }.xlsx|.
@@ -432,6 +496,7 @@ FORM generate_excel_template USING it_template TYPE gtty_key_mapping_input.
     CHANGING
       filename          = lv_filename
       path              = lv_file_path
+      fullpath          = lv_fullpath
     EXCEPTIONS
       OTHERS            = 1.
 
