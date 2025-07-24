@@ -12,6 +12,20 @@ your_variable = 'PX101104'.
 
 lo_data_descr = cl_abap_typedescr=>describe_by_data( your_variable ).
 lv_type_name = lo_data_descr->get_relative_name( ).
+TRY.
+    cl_mdg_id_matching_tools=>process_rtti_key_struc(
+      EXPORTING
+        iv_oitc         = '907'                 " Object Identifier Type
+      IMPORTING
+        ev_multi_key    = DATA(lv_multi_key)                 " 'X': Structure does have multiple key fields
+        et_key_fields   = DATA(lt_key_fields)                 " Key Fields of the Key structure
+        ev_no_key_struc = DATA(lv_no_key_struct)                 " 'X': No Key structure defined in customizing
+        es_oitc_data    = DATA(ls_oitc_Data)                 " OITC data
+    ).
+  CATCH cx_mdg_idsc_invalid INTO DATA(lx_mdg_idsc_invalid).           " Key Mapping related OITC code error
+  CATCH cx_mdg_km_invalid_id_datatype INTO DATA(lx_mdg_km_invalid_id_datatype). " Key Structure does not exist
+  CATCH cx_mdg_obj_id_struc_not_exist INTO DATA(lrcx_mdg_obj_id_struc_no_exist). " Key Structure does not exist
+ENDTRY.
 BREAK-POINT.
 " If it's based on a data element, lv_type_name will contain the data element name
 *DATA: ls_attributes TYPE zmed_t_tx_attr.

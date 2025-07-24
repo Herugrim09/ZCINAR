@@ -16,7 +16,54 @@ CLASS zcl_med_mdg_km_utility DEFINITION
         iv_set_lcl_system_by_api TYPE abap_bool DEFAULT abap_true
       RETURNING
         VALUE(ro_instance)       TYPE REF TO zcl_med_mdg_km_utility.
+    METHODS:
+      " Delete key mapping - NEW METHOD
+      delete_key_mapping
+        IMPORTING
+          iv_object_type    TYPE mdg_object_type_code_bs
+          iv_ids_type       TYPE mdg_ids_type_code_bs
+          iv_system_id      TYPE sld_bskey
+          iv_id_value       TYPE mdg_object_id_bs
+          iv_delete_objects TYPE abap_bool DEFAULT abap_false
+        EXPORTING
+          et_messages       TYPE usmd_t_message
+        RETURNING
+          VALUE(rv_success) TYPE abap_bool,
 
+      " Update key mapping (change identifier) - NEW METHOD
+      update_key_mapping
+        IMPORTING
+          iv_object_type    TYPE mdg_object_type_code_bs
+          iv_old_ids_type   TYPE mdg_ids_type_code_bs
+          iv_old_system_id  TYPE sld_bskey
+          iv_old_id_value   TYPE mdg_object_id_bs
+          iv_new_ids_type   TYPE mdg_ids_type_code_bs
+          iv_new_system_id  TYPE sld_bskey
+          iv_new_id_value   TYPE mdg_object_id_bs
+        EXPORTING
+          et_messages       TYPE usmd_t_message
+          et_change_failed  TYPE mdg_t_object_chg_failed_bs
+        RETURNING
+          VALUE(rv_success) TYPE abap_bool,
+
+      " Delete multiple mappings - NEW METHOD
+      delete_multiple_mappings
+        IMPORTING
+          it_delete_keys    TYPE mdg_t_delete_id_matching_bs
+        EXPORTING
+          et_messages       TYPE usmd_t_message
+        RETURNING
+          VALUE(rv_success) TYPE abap_bool,
+
+      " Update multiple mappings - NEW METHOD
+      update_multiple_mappings
+        IMPORTING
+          it_change_data    TYPE mdg_t_chg_ident_data_bs
+        EXPORTING
+          et_messages       TYPE usmd_t_message
+          et_change_failed  TYPE mdg_t_object_chg_failed_bs
+        RETURNING
+          VALUE(rv_success) TYPE abap_bool.
     " Public methods
     METHODS: constructor
       IMPORTING
@@ -104,6 +151,12 @@ CLASS zcl_med_mdg_km_utility DEFINITION
         RETURNING
           VALUE(rs_matching_obj) TYPE mdg_s_matching_obj_data_inp_bs.
 
+    " Convert API messages to USMD format - NEW HELPER METHOD
+    METHODS:  convert_api_messages
+      IMPORTING
+        it_api_messages    TYPE bapirettab
+      RETURNING
+        VALUE(rt_messages) TYPE usmd_t_message.
 ENDCLASS.
 
 
@@ -364,6 +417,270 @@ CLASS ZCL_MED_MDG_KM_UTILITY IMPLEMENTATION.
     ELSE.
       rv_success = abap_true. " No mappings to save
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD convert_api_messages.
+************************************************************************
+* Extension ID  : E00607
+* Project ID    : S4E
+* Purpose       : Convert API messages to USMD format
+************************************************************************
+    LOOP AT it_api_messages INTO DATA(ls_api_msg).
+      APPEND VALUE usmd_s_message(
+        msgid = ls_api_msg-id
+        msgno = ls_api_msg-number
+        msgty = ls_api_msg-type
+        msgv1 = ls_api_msg-message_v1
+        msgv2 = ls_api_msg-message_v2
+        msgv3 = ls_api_msg-message_v3
+        msgv4 = ls_api_msg-message_v4
+      ) TO rt_messages.
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD delete_key_mapping.
+************************************************************************
+* Extension ID  : E00607
+* Project ID    : S4E
+* Purpose       : Delete Key Mapping
+************************************************************************
+    DATA: lt_delete_keys  TYPE mdg_t_delete_id_matching_bs,
+          ls_delete_key   TYPE mdg_s_delete_id_matching_bs,
+          lt_api_messages TYPE bapirettab.
+
+    CLEAR: rv_success, et_messages.
+
+    " Build delete structure
+    ls_delete_key-object_type_code = iv_object_type.
+    ls_delete_key-identifier_key-ident_defining_scheme_code = iv_ids_type.
+    ls_delete_key-identifier_key-business_system_id = iv_system_id.
+    ls_delete_key-identifier_key-id_value = iv_id_value.
+    ls_delete_key-delete_objects = iv_delete_objects.
+
+    APPEND ls_delete_key TO lt_delete_keys.
+
+    TRY.
+        " Call API to delete mapping
+        mo_km_api->delete_matching(
+          it_identifier_keys = lt_delete_keys
+        ).
+
+        rv_success = abap_true.
+
+      CATCH cx_mdg_id_matching_bs INTO DATA(lo_mdg_error).
+        rv_success = abap_false.
+        " Convert exception messages
+        IF lo_mdg_error->dt_msg_bapiret IS NOT INITIAL.
+          et_messages = convert_api_messages( lo_mdg_error->dt_msg_bapiret ).
+        ENDIF.
+
+      CATCH cx_mdg_missing_input_parameter
+            cx_mdg_missing_id_data
+            cx_mdg_otc_idm_error
+            cx_mdg_idsc_invalid INTO DATA(lo_other_error).
+        rv_success = abap_false.
+        " Add generic error message
+        APPEND VALUE usmd_s_message(
+          msgid = 'ZMD_KM'
+          msgno = '001'
+          msgty = 'E'
+          msgv1 = 'Error deleting key mapping'
+          msgv2 = lo_other_error->get_text( )
+        ) TO et_messages.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD delete_multiple_mappings.
+************************************************************************
+* Extension ID  : E00607
+* Project ID    : S4E
+* Purpose       : Delete Multiple Key Mappings
+************************************************************************
+    CLEAR: rv_success, et_messages.
+
+    IF it_delete_keys IS INITIAL.
+      rv_success = abap_true.
+      RETURN.
+    ENDIF.
+
+    TRY.
+        " Call API to delete multiple mappings
+        mo_km_api->delete_matching(
+          it_identifier_keys = it_delete_keys
+        ).
+
+        rv_success = abap_true.
+
+      CATCH cx_mdg_id_matching_bs INTO DATA(lo_mdg_error).
+        rv_success = abap_false.
+        IF lo_mdg_error->dt_msg_bapiret IS NOT INITIAL.
+          et_messages = convert_api_messages( lo_mdg_error->dt_msg_bapiret ).
+        ENDIF.
+
+      CATCH cx_mdg_missing_input_parameter
+            cx_mdg_missing_id_data
+            cx_mdg_otc_idm_error
+            cx_mdg_idsc_invalid INTO DATA(lo_other_error).
+        rv_success = abap_false.
+        APPEND VALUE usmd_s_message(
+          msgid = 'ZMD_KM'
+          msgno = '004'
+          msgty = 'E'
+          msgv1 = 'Error deleting multiple mappings'
+          msgv2 = lo_other_error->get_text( )
+        ) TO et_messages.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD update_key_mapping.
+************************************************************************
+* Extension ID  : E00607
+* Project ID    : S4E
+* Purpose       : Update Key Mapping (Change Identifier)
+************************************************************************
+    DATA: lt_change_data TYPE mdg_t_chg_ident_data_bs,
+          ls_change_data TYPE mdg_s_chg_ident_data_bs.
+
+    CLEAR: rv_success, et_messages, et_change_failed.
+
+    " Build change structure
+    ls_change_data-object_type_code = iv_object_type.
+
+    " Old identifier
+    ls_change_data-old_identifier_key-ident_defining_scheme_code = iv_old_ids_type.
+    ls_change_data-old_identifier_key-business_system_id = iv_old_system_id.
+    ls_change_data-old_identifier_key-id_value = iv_old_id_value.
+
+    " New identifier
+    ls_change_data-new_identifier_key-ident_defining_scheme_code = iv_new_ids_type.
+    ls_change_data-new_identifier_key-business_system_id = iv_new_system_id.
+    ls_change_data-new_identifier_key-id_value = iv_new_id_value.
+
+    APPEND ls_change_data TO lt_change_data.
+
+    TRY.
+        " Call API to change identifier
+        mo_km_api->change_identifier(
+          EXPORTING
+            it_ident_data = lt_change_data
+          IMPORTING
+            et_chg_failed = et_change_failed
+        ).
+
+        " Check if changes were successful
+        IF et_change_failed IS INITIAL.
+          rv_success = abap_true.
+        ELSE.
+          rv_success = abap_false.
+          " Convert change failures to messages
+          LOOP AT et_change_failed INTO DATA(ls_failed).
+            APPEND VALUE usmd_s_message(
+              msgid = 'ZMD_KM'
+              msgno = '002'
+              msgty = 'E'
+              msgv1 = 'Change failed for identifier'
+              msgv2 = ls_failed-identifier-id_value
+            ) TO et_messages.
+          ENDLOOP.
+        ENDIF.
+
+      CATCH cx_mdg_id_matching_bs INTO DATA(lo_mdg_error).
+        rv_success = abap_false.
+        IF lo_mdg_error->dt_msg_bapiret IS NOT INITIAL.
+          et_messages = convert_api_messages( lo_mdg_error->dt_msg_bapiret ).
+        ENDIF.
+
+      CATCH cx_mdg_missing_input_parameter
+            cx_mdg_missing_id_data
+            cx_mdg_otc_idm_error
+            cx_mdg_idsc_invalid
+            cx_mdg_km_same_identifier INTO DATA(lo_other_error).
+        rv_success = abap_false.
+        APPEND VALUE usmd_s_message(
+          msgid = 'ZMD_KM'
+          msgno = '003'
+          msgty = 'E'
+          msgv1 = 'Error updating key mapping'
+          msgv2 = lo_other_error->get_text( )
+        ) TO et_messages.
+    ENDTRY.
+
+  ENDMETHOD.
+
+
+  METHOD update_multiple_mappings.
+************************************************************************
+* Extension ID  : E00607
+* Project ID    : S4E
+* Purpose       : Update Multiple Key Mappings
+************************************************************************
+    CLEAR: rv_success, et_messages, et_change_failed.
+
+    IF it_change_data IS INITIAL.
+      rv_success = abap_true.
+      RETURN.
+    ENDIF.
+
+    TRY.
+        " Call API to change multiple identifiers
+        mo_km_api->change_identifier(
+          EXPORTING
+            it_ident_data = it_change_data
+          IMPORTING
+            et_chg_failed = et_change_failed
+        ).
+
+        " Check overall success
+        IF et_change_failed IS INITIAL.
+          rv_success = abap_true.
+        ELSE.
+          rv_success = abap_false.
+          " Convert failures to messages
+          LOOP AT et_change_failed INTO DATA(ls_failed).
+            DATA(lv_msg) = |Change failed: { ls_failed-identifier-id_value }|.
+            IF ls_failed-object_key_not_found = abap_true.
+              lv_msg = |{ lv_msg } - Object not found|.
+            ENDIF.
+            IF ls_failed-new_identifier_still_exists = abap_true.
+              lv_msg = |{ lv_msg } - New identifier exists|.
+            ENDIF.
+
+            APPEND VALUE usmd_s_message(
+              msgid = 'ZMD_KM'
+              msgno = '005'
+              msgty = 'E'
+              msgv1 = lv_msg
+            ) TO et_messages.
+          ENDLOOP.
+        ENDIF.
+
+      CATCH cx_mdg_id_matching_bs INTO DATA(lo_mdg_error).
+        rv_success = abap_false.
+        IF lo_mdg_error->dt_msg_bapiret IS NOT INITIAL.
+          et_messages = convert_api_messages( lo_mdg_error->dt_msg_bapiret ).
+        ENDIF.
+
+      CATCH cx_mdg_missing_input_parameter
+            cx_mdg_missing_id_data
+            cx_mdg_otc_idm_error
+            cx_mdg_idsc_invalid
+            cx_mdg_km_same_identifier INTO DATA(lo_other_error).
+        rv_success = abap_false.
+        APPEND VALUE usmd_s_message(
+          msgid = 'ZMD_KM'
+          msgno = '006'
+          msgty = 'E'
+          msgv1 = 'Error updating multiple mappings'
+          msgv2 = lo_other_error->get_text( )
+        ) TO et_messages.
+    ENDTRY.
 
   ENDMETHOD.
 ENDCLASS.

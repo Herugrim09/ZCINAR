@@ -10,6 +10,21 @@ TYPE-POOLS: icon, slis.
 "----------------------------------------------------------------------
 " Global Types
 "----------------------------------------------------------------------
+*DATA: pcomp1lb TYPE usmd_value,
+*      pcomp2lb TYPE usmd_value,
+*      pcomp3lb TYPE usmd_value,
+*      pcomp4lb TYPE usmd_value,
+*      pcomp5lb TYPE usmd_value.
+
+TYPES: BEGIN OF ty_component_filter,
+         field_name   TYPE string,
+         field_label  TYPE string,
+         field_value  TYPE string,
+         data_type    TYPE string,
+         field_length TYPE i,
+         convexit     TYPE string,
+       END OF ty_component_filter.
+TYPES: ty_t_component_filter TYPE STANDARD TABLE OF ty_component_filter.
 TYPES: BEGIN OF gty_object_type_list,
          object_type_code TYPE mdg_object_type_code_bs,
          description      TYPE mdg_object_type_code_desc_bs,
@@ -69,7 +84,9 @@ TYPES: gtty_object_type_list     TYPE TABLE OF gty_object_type_list,
 " Object Type Selection
 DATA: gv_object_type_code TYPE mdg_object_type_code_bs,
       gv_ids_type_code    TYPE mdg_ids_type_code_bs.
-
+DATA: gt_component_filters TYPE TABLE OF ty_component_filter,
+      gv_comp_filter_set   TYPE abap_bool,
+      gv_comp_filter_count TYPE i.
 " Operation Selection
 DATA: gv_operation_mode TYPE char1 VALUE 'D'. " D=Display, C=Create, U=Update, X=Delete
 

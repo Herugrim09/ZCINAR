@@ -83,6 +83,12 @@
      <LENGTH>28</LENGTH>
     </item>
     <item>
+     <ID>I</ID>
+     <KEY>030</KEY>
+     <ENTRY>Component Filters</ENTRY>
+     <LENGTH>18</LENGTH>
+    </item>
+    <item>
      <ID>R</ID>
      <ENTRY>Program ZMDG_R_KEY_MAP_UNIVERSAL</ENTRY>
      <LENGTH>32</LENGTH>
