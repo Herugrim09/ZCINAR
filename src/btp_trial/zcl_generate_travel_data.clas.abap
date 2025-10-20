@@ -11,7 +11,9 @@ ENDCLASS.
 
 
 
-CLASS zcl_generate_travel_data IMPLEMENTATION.
+CLASS ZCL_GENERATE_TRAVEL_DATA IMPLEMENTATION.
+
+
   METHOD if_oo_adt_classrun~main.
 
     DATA itab TYPE TABLE OF zcac_travel_data.
@@ -36,6 +38,5 @@ CLASS zcl_generate_travel_data IMPLEMENTATION.
 
 *   output the result as a console message
     out->write( |{ sy-dbcnt } travel entries inserted successfully!| ).
-
   ENDMETHOD.
 ENDCLASS.

@@ -6,6 +6,7 @@
 REPORT zmdg_cancel_crequest.
 DATA: gs_dummy_crequest    TYPE usmd120c,
       it_creqs_2bewithdraw TYPE usmd_ts_change_request,
+      gs_dummy_status      TYPE usmd120c,  " Add this line
       it_crequests         TYPE TABLE OF usmd_crequest.
 
 TYPES: BEGIN OF ty_deleted_cr,
@@ -25,6 +26,7 @@ SELECTION-SCREEN END OF BLOCK b02.
 SELECTION-SCREEN BEGIN OF BLOCK b03 WITH FRAME TITLE TEXT-003.
   SELECT-OPTIONS creat_by FOR gs_dummy_crequest-usmd_created_by. "OBLIGATORY.
   SELECT-OPTIONS crtype FOR gs_dummy_crequest-usmd_creq_type. "OBLIGATORY.
+  SELECT-OPTIONS cr_stat FOR gs_dummy_status-usmd_creq_status.
   PARAMETERS period TYPE i DEFAULT 1.
 SELECTION-SCREEN END OF BLOCK b03.
 
@@ -32,7 +34,7 @@ AT SELECTION-SCREEN.
   "Initial checks.
   DATA: lfd_usmd_model TYPE usmd_model.
 
-  IF cr_id IS INITIAL AND creat_by[] IS INITIAL AND crtype[] IS INITIAL.
+  IF cr_id IS INITIAL AND creat_by[] IS INITIAL AND crtype[] IS INITIAL AND cr_stat[] IS INITIAL.
 
     IF lfd_usmd_model IS INITIAL.
 
@@ -55,7 +57,7 @@ AT SELECTION-SCREEN.
     ENDIF.
   ENDIF.
 
-  IF cr_id IS NOT INITIAL AND ( creat_by[] IS NOT INITIAL OR crtype[] IS NOT INITIAL ).
+  IF  cr_id IS NOT INITIAL AND ( creat_by[] IS NOT INITIAL OR crtype[] IS NOT INITIAL OR cr_stat[] IS NOT INITIAL ). "cr_id IS NOT INITIAL AND ( creat_by[] IS NOT INITIAL OR crtype[] IS NOT INITIAL ).
     MESSAGE ID 'ZMDG_DQM_MESSAGES' TYPE 'E' NUMBER '002'.
     LEAVE PROGRAM.
   ENDIF.
@@ -164,29 +166,62 @@ START-OF-SELECTION.
     ENDLOOP.
 
 
-
     IF crequest[] IS NOT INITIAL.
-      SELECT usmd_crequest FROM usmd120c INTO TABLE @DATA(lit_drafts_2be_deleted)
-                                              WHERE usmd_crequest IN @crequest
-                                              AND usmd_created_at IN @creat_at.
-      INSERT LINES OF lit_drafts_2be_deleted INTO TABLE it_creqs_2bewithdraw.
+      IF cr_stat[] IS NOT INITIAL.
+        " If status filter is provided, include it in WHERE clause
+        SELECT usmd_crequest FROM usmd120c INTO TABLE @DATA(lit_drafts_2be_deleted)
+                                                WHERE usmd_crequest IN @crequest
+                                                AND usmd_created_at IN @creat_at
+                                                AND usmd_creq_status IN @cr_stat[].
+      ELSE.
+        " If no status filter, keep original query
+        SELECT usmd_crequest FROM usmd120c INTO TABLE @lit_drafts_2be_deleted
+                                                WHERE usmd_crequest IN @crequest
+                                                AND usmd_created_at IN @creat_at.
+      ENDIF.
+      it_creqs_2bewithdraw = CORRESPONDING #( lit_drafts_2be_deleted ).
     ENDIF.
+*    IF crequest[] IS NOT INITIAL.
+*      SELECT usmd_crequest FROM usmd120c INTO TABLE @DATA(lit_drafts_2be_deleted)
+*                                              WHERE usmd_crequest IN @crequest
+*                                              AND usmd_created_at IN @creat_at.
+*      INSERT LINES OF lit_drafts_2be_deleted INTO TABLE it_creqs_2bewithdraw.
+*    ENDIF.
     " lfd_period = period.
   ENDIF.
 
   IF creat_by[] IS INITIAL AND crtype[] IS NOT INITIAL.
-    PERFORM get_cr_in_draft_by_crtype USING period creat_at crtype[].
+    PERFORM get_cr_in_draft_by_crtype USING period creat_at crtype[] cr_stat[]..
   ENDIF.
-
   IF creat_by[] IS NOT INITIAL AND crtype[] IS NOT INITIAL.
     CLEAR lit_drafts_2be_deleted.
-    SELECT usmd_crequest FROM usmd120c INTO TABLE @lit_drafts_2be_deleted
-                                              WHERE usmd_created_by IN @creat_by[]
-                                              AND usmd_created_at IN @creat_at
-                                              AND usmd_creq_type IN @crtype[]
-                                              AND usmd_draft_step NE ''.
-    INSERT LINES OF lit_drafts_2be_deleted INTO TABLE it_creqs_2bewithdraw.
+    IF cr_stat[] IS NOT INITIAL.
+      " Include status in WHERE clause if provided
+      SELECT usmd_crequest FROM usmd120c INTO TABLE @lit_drafts_2be_deleted
+                                                WHERE usmd_created_by IN @creat_by[]
+                                                AND usmd_created_at IN @creat_at
+                                                AND usmd_creq_type IN @crtype[]
+                                                AND usmd_creq_status IN @cr_stat[]
+                                                AND usmd_draft_step NE ''.
+    ELSE.
+      " Original query without status filter
+      SELECT usmd_crequest FROM usmd120c INTO TABLE @lit_drafts_2be_deleted
+                                                WHERE usmd_created_by IN @creat_by[]
+                                                AND usmd_created_at IN @creat_at
+                                                AND usmd_creq_type IN @crtype[]
+                                                AND usmd_draft_step NE ''.
+    ENDIF.
+    it_creqs_2bewithdraw = CORRESPONDING #( lit_drafts_2be_deleted ) .
   ENDIF.
+*  IF creat_by[] IS NOT INITIAL AND crtype[] IS NOT INITIAL.
+*    CLEAR lit_drafts_2be_deleted.
+*    SELECT usmd_crequest FROM usmd120c INTO TABLE @lit_drafts_2be_deleted
+*                                              WHERE usmd_created_by IN @creat_by[]
+*                                              AND usmd_created_at IN @creat_at
+*                                              AND usmd_creq_type IN @crtype[]
+*                                              AND usmd_draft_step NE ''.
+*    INSERT LINES OF lit_drafts_2be_deleted INTO TABLE it_creqs_2bewithdraw.
+*  ENDIF.
 
   IF cr_id[] IS NOT INITIAL.
     it_creqs_2bewithdraw = VALUE #( FOR <lfd_creq_id2> IN cr_id[] ( <lfd_creq_id2>-low ) ).
@@ -292,15 +327,28 @@ END-OF-SELECTION.
 
 FORM get_cr_in_draft_by_crtype USING p_period TYPE i
                                 p_creat_at TYPE creat_at_type
-                                p_tab_crtype TYPE crtype_tab_type.
+                                p_tab_crtype TYPE crtype_tab_type
+                                p_tab_status TYPE STANDARD TABLE.
 
 
 
-
-  SELECT usmd_crequest FROM usmd120c WHERE usmd_creq_type IN @p_tab_crtype
-                                       AND usmd_draft_step NE ''
-                                       AND usmd_created_at IN @p_creat_at
-  INTO TABLE @DATA(lit_crequests).
+  " Replace the existing SELECT with:
+  IF p_tab_status[] IS NOT INITIAL.
+    SELECT usmd_crequest FROM usmd120c WHERE usmd_creq_type IN @p_tab_crtype
+                                         AND usmd_draft_step NE ''
+                                         AND usmd_created_at IN @p_creat_at
+                                         AND usmd_creq_status IN @p_tab_status
+    INTO TABLE @DATA(lit_crequests).
+  ELSE.
+    SELECT usmd_crequest FROM usmd120c WHERE usmd_creq_type IN @p_tab_crtype
+                                         AND usmd_draft_step NE ''
+                                         AND usmd_created_at IN @p_creat_at
+    INTO TABLE @lit_crequests.
+  ENDIF.
+*  SELECT usmd_crequest FROM usmd120c WHERE usmd_creq_type IN @p_tab_crtype
+*                                       AND usmd_draft_step NE ''
+*                                       AND usmd_created_at IN @p_creat_at
+*  into table @DATA(lit_crequests).
   LOOP AT lit_crequests ASSIGNING FIELD-SYMBOL(<lfd_crequest>).
     IF line_exists( it_creqs_2bewithdraw[ <lfd_crequest>-usmd_crequest ] ).
       CONTINUE.

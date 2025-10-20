@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Component Name="FPM_FORM_UIBB_GL2" ConfId="ZPCTRC71C8538D006D539978799DD35E" ConfType="10" ConfVar="">
+ <Node Name="CONFIGURATION_CONTEXT" SimpleFormat="true">
+  <Item Index="000001" SimpleFormat="true">
+   <Node Name="FORM" SimpleFormat="true">
+    <Item Index="000001" SimpleFormat="true">
+     <FEEDER>ZCL_MDGF_GUIBB_PCTR_01</FEEDER>
+     <Node Name="PARAMETER" Sequence="COMPONENT_NAME
+OBJECT_NAME
+EDIT_MODE
+JOINED_OBJECTS
+MORPH_DEFAULT_VISIBILITY
+MORPH_ENTRIES
+READ_MODE_PER_ACTION
+EVENT_EXCLUSION_PER_ACTION" SimpleFormat="true">
+      <Item Index="000001" SimpleFormat="true" Changed="true">
+       <VALUE>MDGF</VALUE>
+       <NAME Final="5 ">COMPONENT_NAME</NAME>
+      </Item>
+      <Item Index="000002" SimpleFormat="true" Changed="true">
+       <VALUE>PCTR</VALUE>
+       <NAME Final="5 ">OBJECT_NAME</NAME>
+      </Item>
+      <Item Index="000003" SimpleFormat="true" Changed="true">
+       <VALUE>X</VALUE>
+       <NAME Final="5 ">EDIT_MODE</NAME>
+      </Item>
+      <Item Index="000004" SimpleFormat="true" Changed="true">
+       <VALUE>﻿&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-16&quot;?&gt;&lt;asx:abap xmlns:asx=&quot;http://www.sap.com/abapxml&quot; version=&quot;1.0&quot;&gt;&lt;asx:values&gt;&lt;DATA/&gt;&lt;/asx:values&gt;&lt;/asx:abap&gt;</VALUE>
+       <NAME Final="5 ">JOINED_OBJECTS</NAME>
+      </Item>
+      <Item Index="000005" SimpleFormat="true" Changed="true">
+       <VALUE/>
+       <NAME Final="5 ">MORPH_DEFAULT_VISIBILITY</NAME>
+      </Item>
+      <Item Index="000006" SimpleFormat="true" Changed="true">
+       <VALUE>﻿&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-16&quot;?&gt;&lt;asx:abap xmlns:asx=&quot;http://www.sap.com/abapxml&quot; version=&quot;1.0&quot;&gt;&lt;asx:values&gt;&lt;DATA/&gt;&lt;/asx:values&gt;&lt;/asx:abap&gt;</VALUE>
+       <NAME Final="5 ">MORPH_ENTRIES</NAME>
+      </Item>
+      <Item Index="000007" SimpleFormat="true" Changed="true">
+       <VALUE>﻿&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-16&quot;?&gt;&lt;asx:abap xmlns:asx=&quot;http://www.sap.com/abapxml&quot; version=&quot;1.0&quot;&gt;&lt;asx:values&gt;&lt;DATA/&gt;&lt;/asx:values&gt;&lt;/asx:abap&gt;</VALUE>
+       <NAME Final="5 ">READ_MODE_PER_ACTION</NAME>
+      </Item>
+      <Item Index="000008" SimpleFormat="true" Changed="true">
+       <VALUE>﻿&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-16&quot;?&gt;&lt;asx:abap xmlns:asx=&quot;http://www.sap.com/abapxml&quot; version=&quot;1.0&quot;&gt;&lt;asx:values&gt;&lt;DATA/&gt;&lt;/asx:values&gt;&lt;/asx:abap&gt;</VALUE>
+       <NAME Final="5 ">EVENT_EXCLUSION_PER_ACTION</NAME>
+      </Item>
+     </Node>
+    </Item>
+   </Node>
+  </Item>
+ </Node>
+</Component>

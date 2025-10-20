@@ -3,16 +3,17 @@
  <asx:abap xmlns:asx="http://www.sap.com/abapxml" version="1.0">
   <asx:values>
    <PROGDIR>
-    <NAME>ZMDG_I_KM_UNIVERSAL_FORMS</NAME>
-    <SUBC>I</SUBC>
+    <NAME>ZPROG_CREATE_CATEGORY_CONV</NAME>
+    <SUBC>1</SUBC>
     <RLOAD>E</RLOAD>
+    <FIXPT>X</FIXPT>
     <UCCHECK>X</UCCHECK>
    </PROGDIR>
    <TPOOL>
     <item>
      <ID>R</ID>
-     <ENTRY>Include ZMDG_I_KM_UNIVERSAL_FORMS</ENTRY>
-     <LENGTH>33</LENGTH>
+     <ENTRY>Program ZPROG_CREATE_CATEGORY_CONV</ENTRY>
+     <LENGTH>34</LENGTH>
     </item>
    </TPOOL>
   </asx:values>
