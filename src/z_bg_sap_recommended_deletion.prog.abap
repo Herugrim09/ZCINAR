@@ -360,6 +360,13 @@ START-OF-SELECTION.
            END OF ty_obsolete_row.
     DATA lt_obsolete_row TYPE STANDARD TABLE OF ty_obsolete_row WITH EMPTY KEY.
     DATA lv_description  TYPE string.
+* Dynamic SELECT below has BOTH a dynamic column list (lv_entity_field)
+* and a dynamic FROM (lv_tck_tabname) at the same time - Open SQL does
+* not allow "INTO TABLE @DATA(...)" inline declarations in that case
+* ("projection list ... and FROM clause" must be static for inline
+* declarations). The target must be declared explicitly beforehand
+* with a concrete, non-generic type instead.
+    DATA lt_obsolete_ids TYPE STANDARD TABLE OF string WITH EMPTY KEY.
 
     IF lt_tck_tables IS NOT INITIAL.
       READ TABLE lt_tck_tables INDEX 1 INTO DATA(lv_tck_tabname).
@@ -367,7 +374,7 @@ START-OF-SELECTION.
 
       TRY.
           SELECT (lv_entity_field) FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
-            INTO TABLE @DATA(lt_obsolete_ids).
+            INTO TABLE @lt_obsolete_ids.
         CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
           CLEAR lt_obsolete_ids.
       ENDTRY.
@@ -375,11 +382,10 @@ START-OF-SELECTION.
       READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
 
       LOOP AT lt_obsolete_ids INTO DATA(lv_obsolete_id).
-        DATA(lv_obsolete_id_str) = CONV string( lv_obsolete_id ).
         CLEAR lv_description.
 
         IF lv_txt_tabname IS NOT INITIAL.
-          DATA(lv_txt_where) = |{ lv_entity_field } eq '{ lv_obsolete_id_str }' and USMD_EDTN_NUMBER eq { lv_edtn_number }|.
+          DATA(lv_txt_where) = |{ lv_entity_field } eq '{ lv_obsolete_id }' and USMD_EDTN_NUMBER eq { lv_edtn_number }|.
           TRY.
               SELECT SINGLE txtsh FROM (lv_txt_tabname) WHERE (lv_txt_where)
                 INTO @lv_description.
@@ -388,7 +394,7 @@ START-OF-SELECTION.
           ENDTRY.
         ENDIF.
 
-        APPEND VALUE ty_obsolete_row( id = lv_obsolete_id_str description = lv_description ) TO lt_obsolete_row.
+        APPEND VALUE ty_obsolete_row( id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
       ENDLOOP.
     ENDIF.
 
