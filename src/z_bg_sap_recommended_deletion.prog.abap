@@ -47,6 +47,32 @@ REPORT z_bg_sap_recommended_deletion.
 *& S_TABU_DIS or S_TABU_NAM with activity 06 (Delete) is required
 *& for the resolved /1MD/MD* and /SMD/MD* target tables.
 *&---------------------------------------------------------------------*
+*& CHANGE LOG
+*& ----------
+*& [2026-07-29] Added USMD_OBS_TCK (obsolete flag) guard.
+*&   The check table (TCK_<model>_<entity>) carries a USMD_OBS_TCK
+*&   flag. Both test-mode counting and the productive DELETE now add
+*&   "AND USMD_OBS_TCK eq 'X'" to the WHERE clause, but only for the
+*&   check table's physical table (tracked via lt_tck_tables) - rows
+*&   matching the filter that are NOT flagged obsolete are silently
+*&   left alone; only already-obsoleted rows get deleted/counted.
+*&   TXT/hierarchy tables are unaffected since they don't carry this
+*&   field. See lt_tck_tables and the "obsolete-flag restriction"
+*&   comment blocks below.
+*&   (A hierarchy-node protection guard was added and then reworked
+*&   on this date too, but was decided to be unnecessary - the
+*&   obsolete-flag guard above was judged sufficient - and has been
+*&   removed again.)
+*& [2026-07-29] Added a confirmation dialog before productive delete.
+*&   Right before the DELETE loop (productive mode only, not test
+*&   mode), the program now does a dry-run COUNT per table (with the
+*&   same obsolete-flag-restricted WHERE used for the real DELETE),
+*&   shows the resulting per-table/total record counts to the user
+*&   via POPUP_TO_CONFIRM, and only proceeds with the actual DELETE
+*&   loop if the user clicks "Yes, Delete". Cancelling, clicking
+*&   "No", or there being nothing obsolete to delete all abort with
+*&   a message and no data is touched.
+*&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
 " Selection screen
@@ -168,6 +194,23 @@ START-OF-SELECTION.
     ENDLOOP.
   ENDLOOP.
 
+*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*
+* Track the check table's physical name(s) separately: the
+* USMD_OBS_TCK obsolete-flag field only exists on the check table
+* (TCK_<model>_<entity>), not on the text/hierarchy tables. This
+* lets the WHERE-clause builder below add the obsolete-flag
+* condition only for that specific table.
+  DATA lt_tck_tables TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
+  DATA(lv_log_tck) = |TCK_{ lv_model }_{ lv_entity }|.
+
+  SELECT physical_name
+    FROM mdg_gn_tgobj
+    WHERE logical_name = @lv_log_tck
+    INTO TABLE @lt_tck_tables.
+*--------------------------------------------------------------------*  FINISH
+*--------------------------------------------------------------------*
+
   " Hierarchy assignment table via MDG_MDF2011
   " TABLE_USAGE = '3' identifies hierarchy assignment tables.
   " Only group entities (e.g. CCTRG, PCTRG, FSIH) have one.
@@ -212,8 +255,19 @@ START-OF-SELECTION.
 * Example usage – test mode (count only):
   IF p_test = abap_true. "START - IF Statement added
     LOOP AT lt_tables INTO DATA(lv_tabname).
+*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*
+* Only the check table carries USMD_OBS_TCK - restrict deletion to
+* obsolete-flagged rows there; other tables keep the plain WHERE.
+      DATA(lv_table_where) = lv_where.
+      READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_tabname.
+      IF sy-subrc = 0.
+        lv_table_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+      ENDIF.
+*--------------------------------------------------------------------*  FINISH
+*--------------------------------------------------------------------*
       TRY.
-          SELECT COUNT(*) FROM (lv_tabname) WHERE (lv_where)
+          SELECT COUNT(*) FROM (lv_tabname) WHERE (lv_table_where)
             INTO @DATA(lv_cnt).
 *--------------------------------------------------------------------*  START
 *--------------------------------------------------------------------*
@@ -230,12 +284,78 @@ START-OF-SELECTION.
     ENDLOOP.
   ELSE.
 * Example usage – productive mode (delete):
+*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*
+* Before deleting anything, do a dry-run COUNT per table (same
+* per-table WHERE as the actual DELETE below, including the
+* obsolete-flag restriction for the check table) and show the
+* result to the user in a confirmation dialog. Deletion only
+* proceeds if the user explicitly confirms.
+    DATA lv_confirm_text TYPE string.
+    DATA lv_total_cnt    TYPE i.
+    DATA lv_answer       TYPE c LENGTH 1.
+    DATA(lv_nl)          = cl_abap_char_utilities=>newline.
+
+    LOOP AT lt_tables INTO DATA(lv_preview_tabname).
+      DATA(lv_preview_where) = lv_where.
+      READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_preview_tabname.
+      IF sy-subrc = 0.
+        lv_preview_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+      ENDIF.
+
+      TRY.
+          SELECT COUNT(*) FROM (lv_preview_tabname) WHERE (lv_preview_where)
+            INTO @DATA(lv_preview_cnt).
+        CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
+          CONTINUE.
+      ENDTRY.
+
+      IF lv_preview_cnt > 0.
+        lv_total_cnt     = lv_total_cnt + lv_preview_cnt.
+        lv_confirm_text  = |{ lv_confirm_text }{ lv_preview_tabname }: { lv_preview_cnt } record(s){ lv_nl }|.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_total_cnt = 0.
+      WRITE: |No obsolete (USMD_OBS_TCK = 'X') records found to delete for entity { lv_entity }, edition { lv_edtn }.|, /.
+      RETURN.
+    ENDIF.
+
+    CALL FUNCTION 'POPUP_TO_CONFIRM'
+      EXPORTING
+        titlebar             = 'Confirm Deletion'
+        text_question        = |The following { lv_total_cnt } obsolete record(s) will be permanently deleted:{ lv_nl }{ lv_confirm_text }{ lv_nl }Do you want to continue?|
+        text_button_1        = 'Yes, Delete'
+        text_button_2        = 'No, Cancel'
+        default_button       = '2'
+        display_cancel_button = abap_false
+      IMPORTING
+        answer               = lv_answer.
+
+    IF lv_answer <> '1'.
+      WRITE: |Deletion cancelled by user.|, /.
+      RETURN.
+    ENDIF.
+*--------------------------------------------------------------------*  FINISH
+*--------------------------------------------------------------------*
     LOOP AT lt_tables INTO lv_tabname.
 *  LOOP AT lt_tables INTO DATA(lv_tabname).
+*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*
+* Same obsolete-flag restriction as in test mode above, applied here
+* to the actual DELETE so productive mode only ever removes rows
+* already marked USMD_OBS_TCK = 'X' from the check table.
+      lv_table_where = lv_where.
+      READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_tabname.
+      IF sy-subrc = 0.
+        lv_table_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+      ENDIF.
+*--------------------------------------------------------------------*  FINISH
+*--------------------------------------------------------------------*
       TRY.
-          DELETE FROM (lv_tabname) WHERE (lv_where).
+          DELETE FROM (lv_tabname) WHERE (lv_table_where).
           COMMIT WORK AND WAIT.
-          WRITE: |{ lv_where } has been deleted from table { lv_tabname }  |, /.
+          WRITE: |{ lv_table_where } has been deleted from table { lv_tabname }  |, /.
         CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
       ENDTRY.
     ENDLOOP.
