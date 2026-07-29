@@ -72,6 +72,14 @@ REPORT z_bg_sap_recommended_deletion.
 *&   loop if the user clicks "Yes, Delete". Cancelling, clicking
 *&   "No", or there being nothing obsolete to delete all abort with
 *&   a message and no data is touched.
+*& [2026-07-29] Added an ID+Description review popup before the
+*&   Yes/No confirmation. Reads the obsolete object IDs from the
+*&   check table (dynamic key field lv_entity_field) and looks up
+*&   each one's description (field TXTSH) from the text table (new
+*&   lt_txt_tables), then displays them in a scrollable CL_SALV_TABLE
+*&   popup using a fixed generic (ID, Description) row type - not a
+*&   dynamically-built structure per entity - before the existing
+*&   POPUP_TO_CONFIRM Yes/No dialog runs.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -208,6 +216,16 @@ START-OF-SELECTION.
     FROM mdg_gn_tgobj
     WHERE logical_name = @lv_log_tck
     INTO TABLE @lt_tck_tables.
+
+* Track the text table's physical name too - needed to look up each
+* obsolete object's description (field TXTSH) for the review popup.
+  DATA lt_txt_tables TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
+  DATA(lv_log_txt) = |TXT_{ lv_model }_{ lv_entity }|.
+
+  SELECT physical_name
+    FROM mdg_gn_tgobj
+    WHERE logical_name = @lv_log_txt
+    INTO TABLE @lt_txt_tables.
 *--------------------------------------------------------------------*  FINISH
 *--------------------------------------------------------------------*
 
@@ -320,6 +338,80 @@ START-OF-SELECTION.
       WRITE: |No obsolete (USMD_OBS_TCK = 'X') records found to delete for entity { lv_entity }, edition { lv_edtn }.|, /.
       RETURN.
     ENDIF.
+
+*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*
+* Show the actual obsolete objects (ID + Description) in a scrollable
+* ALV popup before asking for Yes/No confirmation below. The ALV's
+* row type is a fixed, generic (ID, Description) structure - not
+* dynamically built per entity - since the object's own key field
+* name (lv_entity_field, e.g. /1MD/0GCCTRG) changes per entity/model
+* and building a dynamic ALV structure per entity is unnecessary
+* extra complexity here; we just move the dynamically-read ID value
+* into the generic "id" component instead.
+* Description comes from the text table's TXTSH field (same field
+* name on every entity's text table), matched by the same dynamic ID
+* field + edition (the text table does not carry USMD_OBS_TCK, so it
+* cannot be filtered by obsolete status itself - only used to look up
+* the description for IDs already known to be obsolete).
+    TYPES: BEGIN OF ty_obsolete_row,
+             id          TYPE string,
+             description TYPE string,
+           END OF ty_obsolete_row.
+    DATA lt_obsolete_row TYPE STANDARD TABLE OF ty_obsolete_row WITH EMPTY KEY.
+    DATA lv_description  TYPE string.
+
+    IF lt_tck_tables IS NOT INITIAL.
+      READ TABLE lt_tck_tables INDEX 1 INTO DATA(lv_tck_tabname).
+      DATA(lv_tck_obsolete_where) = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+
+      TRY.
+          SELECT (lv_entity_field) FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
+            INTO TABLE @DATA(lt_obsolete_ids).
+        CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
+          CLEAR lt_obsolete_ids.
+      ENDTRY.
+
+      READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
+
+      LOOP AT lt_obsolete_ids INTO DATA(lv_obsolete_id).
+        DATA(lv_obsolete_id_str) = CONV string( lv_obsolete_id ).
+        CLEAR lv_description.
+
+        IF lv_txt_tabname IS NOT INITIAL.
+          DATA(lv_txt_where) = |{ lv_entity_field } eq '{ lv_obsolete_id_str }' and USMD_EDTN_NUMBER eq { lv_edtn_number }|.
+          TRY.
+              SELECT SINGLE txtsh FROM (lv_txt_tabname) WHERE (lv_txt_where)
+                INTO @lv_description.
+            CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
+              CLEAR lv_description.
+          ENDTRY.
+        ENDIF.
+
+        APPEND VALUE ty_obsolete_row( id = lv_obsolete_id_str description = lv_description ) TO lt_obsolete_row.
+      ENDLOOP.
+    ENDIF.
+
+    IF lt_obsolete_row IS NOT INITIAL.
+      TRY.
+          cl_salv_table=>factory(
+            IMPORTING r_salv_table = DATA(lo_obsolete_alv)
+            CHANGING  t_table      = lt_obsolete_row ).
+        CATCH cx_salv_msg.
+      ENDTRY.
+
+      IF lo_obsolete_alv IS BOUND.
+        lo_obsolete_alv->get_columns( )->set_optimize( abap_true ).
+        lo_obsolete_alv->set_screen_popup(
+          start_column = 5
+          end_column   = 120
+          start_line   = 3
+          end_line     = 25 ).
+        lo_obsolete_alv->display( ).
+      ENDIF.
+    ENDIF.
+*--------------------------------------------------------------------*  FINISH
+*--------------------------------------------------------------------*
 
     CALL FUNCTION 'POPUP_TO_CONFIRM'
       EXPORTING
