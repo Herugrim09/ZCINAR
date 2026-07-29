@@ -360,24 +360,38 @@ START-OF-SELECTION.
            END OF ty_obsolete_row.
     DATA lt_obsolete_row TYPE STANDARD TABLE OF ty_obsolete_row WITH EMPTY KEY.
     DATA lv_description  TYPE string.
-* Dynamic SELECT below has BOTH a dynamic column list (lv_entity_field)
-* and a dynamic FROM (lv_tck_tabname) at the same time - Open SQL does
-* not allow "INTO TABLE @DATA(...)" inline declarations in that case
-* ("projection list ... and FROM clause" must be static for inline
-* declarations). The target must be declared explicitly beforehand
-* with a concrete, non-generic type instead.
     DATA lt_obsolete_ids TYPE STANDARD TABLE OF string WITH EMPTY KEY.
 
     IF lt_tck_tables IS NOT INITIAL.
       READ TABLE lt_tck_tables INDEX 1 INTO DATA(lv_tck_tabname).
       DATA(lv_tck_obsolete_where) = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
 
+* Read full rows dynamically (SELECT * with a dynamic FROM is a
+* well-supported pattern for inline declarations) rather than naming
+* lv_entity_field (a "/"-namespaced field, e.g. /1MD/0GCCTR) directly
+* as a dynamic single-column projection - that combination failed
+* silently at runtime (caught below as an OSQL semantics/syntax
+* error), which is why the review popup wasn't appearing even though
+* the summary count worked fine. The ID value is then pulled out of
+* each row dynamically via ASSIGN COMPONENT instead.
       TRY.
-          SELECT (lv_entity_field) FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
-            INTO TABLE @lt_obsolete_ids.
-        CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
-          CLEAR lt_obsolete_ids.
+          SELECT * FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
+            INTO TABLE @DATA(lt_tck_rows).
+        CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax INTO DATA(lx_tck_select).
+          WRITE: |Could not read obsolete object IDs for the review list ({ lx_tck_select->get_text( ) }) - proceeding without the detailed preview.|, /.
+          CLEAR lt_tck_rows.
       ENDTRY.
+
+      LOOP AT lt_tck_rows ASSIGNING FIELD-SYMBOL(<ls_tck_row>).
+        ASSIGN COMPONENT lv_entity_field OF STRUCTURE <ls_tck_row> TO FIELD-SYMBOL(<lv_id_val>).
+        IF <lv_id_val> IS ASSIGNED.
+          APPEND CONV string( <lv_id_val> ) TO lt_obsolete_ids.
+        ENDIF.
+      ENDLOOP.
+
+      IF lt_tck_rows IS NOT INITIAL AND lt_obsolete_ids IS INITIAL.
+        WRITE: |Could not locate field { lv_entity_field } on { lv_tck_tabname } to build the review list - proceeding without the detailed preview.|, /.
+      ENDIF.
 
       READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
 
@@ -403,7 +417,8 @@ START-OF-SELECTION.
           cl_salv_table=>factory(
             IMPORTING r_salv_table = DATA(lo_obsolete_alv)
             CHANGING  t_table      = lt_obsolete_row ).
-        CATCH cx_salv_msg.
+        CATCH cx_salv_msg INTO DATA(lx_salv_msg).
+          WRITE: |Could not display the detailed review list ({ lx_salv_msg->get_text( ) }) - proceeding without it.|, /.
       ENDTRY.
 
       IF lo_obsolete_alv IS BOUND.
@@ -415,6 +430,8 @@ START-OF-SELECTION.
           end_line     = 25 ).
         lo_obsolete_alv->display( ).
       ENDIF.
+    ELSE.
+      WRITE: |No detailed obsolete-object list available for review; proceeding with the summary count only.|, /.
     ENDIF.
 *--------------------------------------------------------------------*  FINISH
 *--------------------------------------------------------------------*
