@@ -80,6 +80,19 @@ REPORT z_bg_sap_recommended_deletion.
 *&   popup using a fixed generic (ID, Description) row type - not a
 *&   dynamically-built structure per entity - before the existing
 *&   POPUP_TO_CONFIRM Yes/No dialog runs.
+*& [2026-07-29] Fixed two rounds of syntax/runtime issues in the
+*&   above: (1) "SELECT (dyn_field) ... INTO TABLE @DATA(...)" does
+*&   not compile when both the column list and FROM are dynamic -
+*&   fixed by pre-declaring lt_obsolete_ids with a concrete type
+*&   instead of inline. (2) The follow-up attempt to use
+*&   "SELECT * ... INTO TABLE @DATA(...)" with a dynamic FROM hit the
+*&   exact same inline-declaration restriction (not exempt just
+*&   because the projection is "*") and had to be reverted. The
+*&   working version selects the single dynamic column
+*&   (lv_entity_field) directly into the pre-declared lt_obsolete_ids.
+*&   Every failure/empty-result path here now WRITEs the real error
+*&   text instead of silently doing nothing, so future issues are
+*&   visible instead of just making the review popup disappear.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -366,31 +379,27 @@ START-OF-SELECTION.
       READ TABLE lt_tck_tables INDEX 1 INTO DATA(lv_tck_tabname).
       DATA(lv_tck_obsolete_where) = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
 
-* Read full rows dynamically (SELECT * with a dynamic FROM is a
-* well-supported pattern for inline declarations) rather than naming
-* lv_entity_field (a "/"-namespaced field, e.g. /1MD/0GCCTR) directly
-* as a dynamic single-column projection - that combination failed
-* silently at runtime (caught below as an OSQL semantics/syntax
-* error), which is why the review popup wasn't appearing even though
-* the summary count worked fine. The ID value is then pulled out of
-* each row dynamically via ASSIGN COMPONENT instead.
+* SELECT * with a dynamic FROM is NOT exempt from the "inline
+* declarations need a statically known row type" restriction either
+* (same restriction as a dynamic column list) - the row type of "all
+* columns of a table only known by name at runtime" can't be pinned
+* down at compile time, so @DATA(...) is rejected here too.
+* lt_obsolete_ids was already declared above with a concrete,
+* non-generic type (STANDARD TABLE OF string), so a single dynamic
+* column (lv_entity_field) can be selected straight into it without
+* needing an inline declaration. If this still returns nothing, the
+* CATCH below now reports the real OSQL error text instead of just
+* going silent, so the actual cause is visible this time.
       TRY.
-          SELECT * FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
-            INTO TABLE @DATA(lt_tck_rows).
+          SELECT (lv_entity_field) FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
+            INTO TABLE @lt_obsolete_ids.
         CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax INTO DATA(lx_tck_select).
           WRITE: |Could not read obsolete object IDs for the review list ({ lx_tck_select->get_text( ) }) - proceeding without the detailed preview.|, /.
-          CLEAR lt_tck_rows.
+          CLEAR lt_obsolete_ids.
       ENDTRY.
 
-      LOOP AT lt_tck_rows ASSIGNING FIELD-SYMBOL(<ls_tck_row>).
-        ASSIGN COMPONENT lv_entity_field OF STRUCTURE <ls_tck_row> TO FIELD-SYMBOL(<lv_id_val>).
-        IF <lv_id_val> IS ASSIGNED.
-          APPEND CONV string( <lv_id_val> ) TO lt_obsolete_ids.
-        ENDIF.
-      ENDLOOP.
-
-      IF lt_tck_rows IS NOT INITIAL AND lt_obsolete_ids IS INITIAL.
-        WRITE: |Could not locate field { lv_entity_field } on { lv_tck_tabname } to build the review list - proceeding without the detailed preview.|, /.
+      IF lt_obsolete_ids IS INITIAL.
+        WRITE: |No obsolete object IDs were returned for the review list ({ lv_entity_field } on { lv_tck_tabname }) - proceeding without the detailed preview.|, /.
       ENDIF.
 
       READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
