@@ -93,6 +93,22 @@ REPORT z_bg_sap_recommended_deletion.
 *&   Every failure/empty-result path here now WRITEs the real error
 *&   text instead of silently doing nothing, so future issues are
 *&   visible instead of just making the review popup disappear.
+*& [2026-07-29] Fixed a count/delete mismatch: the confirmation
+*&   popup's total (and the productive DELETE) restricted only the
+*&   check table's rows to USMD_OBS_TCK = 'X'; the text and hierarchy
+*&   tables were filtered by edition number alone, since they don't
+*&   carry the obsolete flag themselves. That let an edition with
+*&   zero obsolete records still show a nonzero total (e.g. "44") and
+*&   delete unrelated text/hierarchy rows that merely shared the
+*&   edition, while the ID review popup (built only from the check
+*&   table) correctly showed nothing. The obsolete object IDs are now
+*&   resolved once up front (lt_obsolete_ids / lv_id_in_clause) and
+*&   every non-check table's COUNT and DELETE is restricted to those
+*&   IDs too. If no IDs are found, the report now stops immediately
+*&   (before test-mode counting or the productive popup) with
+*&   "No obsolete (USMD_OBS_TCK = 'X') records found ..." - previously
+*&   test mode had this same mismatch and would show misleading counts
+*&   even with nothing obsolete.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -282,18 +298,61 @@ START-OF-SELECTION.
 *----------------------------------------------------------------------*
 * lt_tables now contains all physical staging table names.
 * lv_where contains the edition filter ready for use.
+*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*
+* Determine which object IDs are actually flagged obsolete in the
+* check table (USMD_OBS_TCK = 'X'). This is the ONLY table that
+* carries the flag - text/hierarchy tables don't - so every other
+* table's COUNT/DELETE must be restricted to these specific IDs via
+* lv_id_in_clause, not just the edition number. Previously text/
+* hierarchy tables were filtered by edition alone, so an edition with
+* zero obsolete records could still show a nonzero total and delete
+* unrelated rows that merely shared the edition.
+  DATA lt_obsolete_ids TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+  DATA lv_id_in_clause TYPE string.
+
+  IF lt_tck_tables IS NOT INITIAL.
+    READ TABLE lt_tck_tables INDEX 1 INTO DATA(lv_tck_tabname).
+    DATA(lv_tck_obsolete_where) = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+
+    TRY.
+        SELECT (lv_entity_field) FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
+          INTO TABLE @lt_obsolete_ids.
+      CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax INTO DATA(lx_tck_select).
+        WRITE: |Could not read obsolete object IDs ({ lx_tck_select->get_text( ) }) - aborting, nothing deleted.|, /.
+        RETURN.
+    ENDTRY.
+
+    LOOP AT lt_obsolete_ids INTO DATA(lv_id_for_in).
+      IF lv_id_in_clause IS INITIAL.
+        lv_id_in_clause = |'{ lv_id_for_in }'|.
+      ELSE.
+        lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_id_for_in }'|.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+  IF lt_obsolete_ids IS INITIAL.
+    WRITE: |No obsolete (USMD_OBS_TCK = 'X') records found for entity { lv_entity }, edition { lv_edtn }.|, /.
+    RETURN.
+  ENDIF.
+*--------------------------------------------------------------------*  FINISH
+*--------------------------------------------------------------------*
 *
 * Example usage – test mode (count only):
   IF p_test = abap_true. "START - IF Statement added
     LOOP AT lt_tables INTO DATA(lv_tabname).
 *--------------------------------------------------------------------*  START [2026-07-29]
 *--------------------------------------------------------------------*
-* Only the check table carries USMD_OBS_TCK - restrict deletion to
-* obsolete-flagged rows there; other tables keep the plain WHERE.
+* Only the check table carries USMD_OBS_TCK - restrict counting there
+* to obsolete-flagged rows; every other table is restricted to the
+* same obsolete IDs via lv_id_in_clause (see above), not just edition.
       DATA(lv_table_where) = lv_where.
       READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_tabname.
       IF sy-subrc = 0.
         lv_table_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+      ELSE.
+        lv_table_where = |{ lv_where } and { lv_entity_field } in ( { lv_id_in_clause } )|.
       ENDIF.
 *--------------------------------------------------------------------*  FINISH
 *--------------------------------------------------------------------*
@@ -318,8 +377,9 @@ START-OF-SELECTION.
 *--------------------------------------------------------------------*  START [2026-07-29]
 *--------------------------------------------------------------------*
 * Before deleting anything, do a dry-run COUNT per table (same
-* per-table WHERE as the actual DELETE below, including the
-* obsolete-flag restriction for the check table) and show the
+* per-table WHERE as the actual DELETE below - check table restricted
+* by the obsolete flag, every other table restricted to the same
+* obsolete IDs via lv_id_in_clause, both resolved above) and show the
 * result to the user in a confirmation dialog. Deletion only
 * proceeds if the user explicitly confirms.
     DATA lv_confirm_text TYPE string.
@@ -332,6 +392,8 @@ START-OF-SELECTION.
       READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_preview_tabname.
       IF sy-subrc = 0.
         lv_preview_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+      ELSE.
+        lv_preview_where = |{ lv_where } and { lv_entity_field } in ( { lv_id_in_clause } )|.
       ENDIF.
 
       TRY.
@@ -346,11 +408,6 @@ START-OF-SELECTION.
         lv_confirm_text  = |{ lv_confirm_text }{ lv_preview_tabname }: { lv_preview_cnt } record(s){ lv_nl }|.
       ENDIF.
     ENDLOOP.
-
-    IF lv_total_cnt = 0.
-      WRITE: |No obsolete (USMD_OBS_TCK = 'X') records found to delete for entity { lv_entity }, edition { lv_edtn }.|, /.
-      RETURN.
-    ENDIF.
 
 *--------------------------------------------------------------------*  START [2026-07-29]
 *--------------------------------------------------------------------*
@@ -367,59 +424,33 @@ START-OF-SELECTION.
 * field + edition (the text table does not carry USMD_OBS_TCK, so it
 * cannot be filtered by obsolete status itself - only used to look up
 * the description for IDs already known to be obsolete).
+* lt_obsolete_ids and lv_tck_tabname were already resolved above
+* (needed there to build lv_id_in_clause) - reused here as-is instead
+* of re-reading the check table a second time.
     TYPES: BEGIN OF ty_obsolete_row,
              id          TYPE string,
              description TYPE string,
            END OF ty_obsolete_row.
     DATA lt_obsolete_row TYPE STANDARD TABLE OF ty_obsolete_row WITH EMPTY KEY.
     DATA lv_description  TYPE string.
-    DATA lt_obsolete_ids TYPE STANDARD TABLE OF string WITH EMPTY KEY.
 
-    IF lt_tck_tables IS NOT INITIAL.
-      READ TABLE lt_tck_tables INDEX 1 INTO DATA(lv_tck_tabname).
-      DATA(lv_tck_obsolete_where) = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+    READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
 
-* SELECT * with a dynamic FROM is NOT exempt from the "inline
-* declarations need a statically known row type" restriction either
-* (same restriction as a dynamic column list) - the row type of "all
-* columns of a table only known by name at runtime" can't be pinned
-* down at compile time, so @DATA(...) is rejected here too.
-* lt_obsolete_ids was already declared above with a concrete,
-* non-generic type (STANDARD TABLE OF string), so a single dynamic
-* column (lv_entity_field) can be selected straight into it without
-* needing an inline declaration. If this still returns nothing, the
-* CATCH below now reports the real OSQL error text instead of just
-* going silent, so the actual cause is visible this time.
-      TRY.
-          SELECT (lv_entity_field) FROM (lv_tck_tabname) WHERE (lv_tck_obsolete_where)
-            INTO TABLE @lt_obsolete_ids.
-        CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax INTO DATA(lx_tck_select).
-          WRITE: |Could not read obsolete object IDs for the review list ({ lx_tck_select->get_text( ) }) - proceeding without the detailed preview.|, /.
-          CLEAR lt_obsolete_ids.
-      ENDTRY.
+    LOOP AT lt_obsolete_ids INTO DATA(lv_obsolete_id).
+      CLEAR lv_description.
 
-      IF lt_obsolete_ids IS INITIAL.
-        WRITE: |No obsolete object IDs were returned for the review list ({ lv_entity_field } on { lv_tck_tabname }) - proceeding without the detailed preview.|, /.
+      IF lv_txt_tabname IS NOT INITIAL.
+        DATA(lv_txt_where) = |{ lv_entity_field } eq '{ lv_obsolete_id }' and USMD_EDTN_NUMBER eq { lv_edtn_number }|.
+        TRY.
+            SELECT SINGLE txtsh FROM (lv_txt_tabname) WHERE (lv_txt_where)
+              INTO @lv_description.
+          CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
+            CLEAR lv_description.
+        ENDTRY.
       ENDIF.
 
-      READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
-
-      LOOP AT lt_obsolete_ids INTO DATA(lv_obsolete_id).
-        CLEAR lv_description.
-
-        IF lv_txt_tabname IS NOT INITIAL.
-          DATA(lv_txt_where) = |{ lv_entity_field } eq '{ lv_obsolete_id }' and USMD_EDTN_NUMBER eq { lv_edtn_number }|.
-          TRY.
-              SELECT SINGLE txtsh FROM (lv_txt_tabname) WHERE (lv_txt_where)
-                INTO @lv_description.
-            CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
-              CLEAR lv_description.
-          ENDTRY.
-        ENDIF.
-
-        APPEND VALUE ty_obsolete_row( id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
-      ENDLOOP.
-    ENDIF.
+      APPEND VALUE ty_obsolete_row( id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
+    ENDLOOP.
 
     IF lt_obsolete_row IS NOT INITIAL.
       TRY.
@@ -466,13 +497,17 @@ START-OF-SELECTION.
 *  LOOP AT lt_tables INTO DATA(lv_tabname).
 *--------------------------------------------------------------------*  START [2026-07-29]
 *--------------------------------------------------------------------*
-* Same obsolete-flag restriction as in test mode above, applied here
-* to the actual DELETE so productive mode only ever removes rows
-* already marked USMD_OBS_TCK = 'X' from the check table.
+* Same restriction as the preview COUNT above: the check table is
+* restricted to USMD_OBS_TCK = 'X', every other table (text,
+* hierarchy) is restricted to the same obsolete IDs via
+* lv_id_in_clause - NOT just the edition number - so productive mode
+* only ever removes rows tied to an object already marked obsolete.
       lv_table_where = lv_where.
       READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_tabname.
       IF sy-subrc = 0.
         lv_table_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+      ELSE.
+        lv_table_where = |{ lv_where } and { lv_entity_field } in ( { lv_id_in_clause } )|.
       ENDIF.
 *--------------------------------------------------------------------*  FINISH
 *--------------------------------------------------------------------*
