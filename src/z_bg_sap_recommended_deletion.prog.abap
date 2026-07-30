@@ -587,10 +587,15 @@ START-OF-SELECTION.
 * lt_obsolete_ids was already resolved above (needed there to build
 * lv_id_in_clause) - reused here as-is instead of re-reading the check
 * table a second time.
-    DATA lt_obsolete_row TYPE ty_obsolete_row_tab.
-    DATA lv_description  TYPE string.
+    DATA lt_obsolete_row    TYPE ty_obsolete_row_tab.
+    DATA lv_description     TYPE string.
+    DATA lv_txt_error_shown TYPE abap_bool.
 
     READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
+
+    IF lv_txt_tabname IS INITIAL.
+      WRITE: |No physical text table found for TXT_{ lv_model }_{ lv_entity } - descriptions will be blank in the review list.|, /.
+    ENDIF.
 
     LOOP AT lt_obsolete_ids INTO DATA(lv_obsolete_id).
       CLEAR lv_description.
@@ -600,7 +605,16 @@ START-OF-SELECTION.
         TRY.
             SELECT SINGLE txtsh FROM (lv_txt_tabname) WHERE (lv_txt_where)
               INTO @lv_description.
-          CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
+* SELECT SINGLE succeeding but leaving lv_description blank is normal
+* when no row matches the filter (e.g. edition/language mismatch) -
+* not an error, so it is not written here. Only a genuine dynamic-SQL
+* failure (wrong field name on this table) is reported, and only once
+* (not per obsolete ID) to avoid spamming the list.
+          CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax INTO DATA(lx_txt_select).
+            IF lv_txt_error_shown = abap_false.
+              WRITE: |Could not read description from table { lv_txt_tabname } ({ lx_txt_select->get_text( ) }) - descriptions will be blank.|, /.
+              lv_txt_error_shown = abap_true.
+            ENDIF.
             CLEAR lv_description.
         ENDTRY.
       ENDIF.
