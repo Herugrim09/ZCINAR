@@ -109,6 +109,21 @@ REPORT z_bg_sap_recommended_deletion.
 *&   "No obsolete (USMD_OBS_TCK = 'X') records found ..." - previously
 *&   test mode had this same mismatch and would show misleading counts
 *&   even with nothing obsolete.
+*& [2026-07-30] Made the review ALV interactive: it now shows a
+*&   "Delete?" checkbox per obsolete object (checked by default,
+*&   editable in place) instead of being a read-only list. The ALV
+*&   popup is shown before the count preview/confirmation instead of
+*&   after, so lv_id_in_clause is rebuilt from only the still-checked
+*&   rows once the popup closes, and everything downstream (preview
+*&   COUNT, the Yes/No total, and the productive DELETE) is restricted
+*&   to that user-selected subset. If nothing is left checked, the
+*&   report stops with "No objects were selected for deletion". This
+*&   also fixed a related gap: the check table's WHERE only ever
+*&   filtered on USMD_OBS_TCK = 'X', never on the ID list, so it would
+*&   have deleted every obsolete row in the check table regardless of
+*&   what the user unchecked while other tables respected the
+*&   selection - the check table's WHERE now additionally requires
+*&   the entity field to be IN the selected-ID list.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -374,51 +389,18 @@ START-OF-SELECTION.
     ENDLOOP.
   ELSE.
 * Example usage – productive mode (delete):
-*--------------------------------------------------------------------*  START [2026-07-29]
-*--------------------------------------------------------------------*
-* Before deleting anything, do a dry-run COUNT per table (same
-* per-table WHERE as the actual DELETE below - check table restricted
-* by the obsolete flag, every other table restricted to the same
-* obsolete IDs via lv_id_in_clause, both resolved above) and show the
-* result to the user in a confirmation dialog. Deletion only
-* proceeds if the user explicitly confirms.
-    DATA lv_confirm_text TYPE string.
-    DATA lv_total_cnt    TYPE i.
-    DATA lv_answer       TYPE c LENGTH 1.
-    DATA(lv_nl)          = cl_abap_char_utilities=>newline.
-
-    LOOP AT lt_tables INTO DATA(lv_preview_tabname).
-      DATA(lv_preview_where) = lv_where.
-      READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_preview_tabname.
-      IF sy-subrc = 0.
-        lv_preview_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
-      ELSE.
-        lv_preview_where = |{ lv_where } and { lv_entity_field } in ( { lv_id_in_clause } )|.
-      ENDIF.
-
-      TRY.
-          SELECT COUNT(*) FROM (lv_preview_tabname) WHERE (lv_preview_where)
-            INTO @DATA(lv_preview_cnt).
-        CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
-          CONTINUE.
-      ENDTRY.
-
-      IF lv_preview_cnt > 0.
-        lv_total_cnt     = lv_total_cnt + lv_preview_cnt.
-        lv_confirm_text  = |{ lv_confirm_text }{ lv_preview_tabname }: { lv_preview_cnt } record(s){ lv_nl }|.
-      ENDIF.
-    ENDLOOP.
-
-*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*  START [2026-07-30]
 *--------------------------------------------------------------------*
 * Show the actual obsolete objects (ID + Description) in a scrollable
-* ALV popup before asking for Yes/No confirmation below. The ALV's
-* row type is a fixed, generic (ID, Description) structure - not
-* dynamically built per entity - since the object's own key field
-* name (lv_entity_field, e.g. /1MD/0GCCTRG) changes per entity/model
-* and building a dynamic ALV structure per entity is unnecessary
-* extra complexity here; we just move the dynamically-read ID value
-* into the generic "id" component instead.
+* ALV popup, with an editable "Delete?" checkbox per row (checked by
+* default), so the user can pick which obsolete objects actually get
+* deleted. The ALV's row type is a fixed, generic (selected, id,
+* description) structure - not dynamically built per entity - since
+* the object's own key field name (lv_entity_field, e.g.
+* /1MD/0GCCTRG) changes per entity/model and building a dynamic ALV
+* structure per entity is unnecessary extra complexity here; we just
+* move the dynamically-read ID value into the generic "id" component
+* instead.
 * Description comes from the text table's TXTSH field (same field
 * name on every entity's text table), matched by the same dynamic ID
 * field + edition (the text table does not carry USMD_OBS_TCK, so it
@@ -428,6 +410,7 @@ START-OF-SELECTION.
 * (needed there to build lv_id_in_clause) - reused here as-is instead
 * of re-reading the check table a second time.
     TYPES: BEGIN OF ty_obsolete_row,
+             selected    TYPE abap_bool,
              id          TYPE string,
              description TYPE string,
            END OF ty_obsolete_row.
@@ -449,7 +432,7 @@ START-OF-SELECTION.
         ENDTRY.
       ENDIF.
 
-      APPEND VALUE ty_obsolete_row( id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
+      APPEND VALUE ty_obsolete_row( selected = abap_true id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
     ENDLOOP.
 
     IF lt_obsolete_row IS NOT INITIAL.
@@ -458,11 +441,22 @@ START-OF-SELECTION.
             IMPORTING r_salv_table = DATA(lo_obsolete_alv)
             CHANGING  t_table      = lt_obsolete_row ).
         CATCH cx_salv_msg INTO DATA(lx_salv_msg).
-          WRITE: |Could not display the detailed review list ({ lx_salv_msg->get_text( ) }) - proceeding without it.|, /.
+          WRITE: |Could not display the detailed review list ({ lx_salv_msg->get_text( ) }) - proceeding with all obsolete records selected.|, /.
       ENDTRY.
 
       IF lo_obsolete_alv IS BOUND.
         lo_obsolete_alv->get_columns( )->set_optimize( abap_true ).
+
+        TRY.
+            DATA(lo_col_selected) = lo_obsolete_alv->get_columns( )->get_column( 'SELECTED' ).
+            lo_col_selected->set_cell_type( if_salv_c_cell_type=>checkbox ).
+            lo_col_selected->set_editable( abap_true ).
+            lo_col_selected->set_short_text( 'Delete?' ).
+            lo_col_selected->set_medium_text( 'Delete?' ).
+            lo_col_selected->set_long_text( 'Delete this object?' ).
+          CATCH cx_salv_not_found.
+        ENDTRY.
+
         lo_obsolete_alv->set_screen_popup(
           start_column = 5
           end_column   = 120
@@ -471,8 +465,63 @@ START-OF-SELECTION.
         lo_obsolete_alv->display( ).
       ENDIF.
     ELSE.
-      WRITE: |No detailed obsolete-object list available for review; proceeding with the summary count only.|, /.
+      WRITE: |No detailed obsolete-object list available for review; proceeding with all obsolete records selected.|, /.
     ENDIF.
+
+* Rebuild lv_id_in_clause from only the rows still checked once the
+* popup closes. cl_salv_table=>factory binds lt_obsolete_row by
+* reference, so edits made to the editable checkbox column while the
+* popup was open are already reflected in lt_obsolete_row here.
+    CLEAR lv_id_in_clause.
+    LOOP AT lt_obsolete_row INTO DATA(lv_obsolete_row) WHERE selected = abap_true.
+      IF lv_id_in_clause IS INITIAL.
+        lv_id_in_clause = |'{ lv_obsolete_row-id }'|.
+      ELSE.
+        lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_obsolete_row-id }'|.
+      ENDIF.
+    ENDLOOP.
+
+    IF lv_id_in_clause IS INITIAL.
+      WRITE: |No objects were selected for deletion - aborting, nothing deleted.|, /.
+      RETURN.
+    ENDIF.
+*--------------------------------------------------------------------*  FINISH
+*--------------------------------------------------------------------*
+
+*--------------------------------------------------------------------*  START [2026-07-29]
+*--------------------------------------------------------------------*
+* Do a dry-run COUNT per table (same per-table WHERE as the actual
+* DELETE below - check table restricted by the obsolete flag AND the
+* user-selected ID list, every other table restricted to the same
+* selected IDs via lv_id_in_clause) and show the result to the user in
+* a confirmation dialog. Deletion only proceeds if the user explicitly
+* confirms.
+    DATA lv_confirm_text TYPE string.
+    DATA lv_total_cnt    TYPE i.
+    DATA lv_answer       TYPE c LENGTH 1.
+    DATA(lv_nl)          = cl_abap_char_utilities=>newline.
+
+    LOOP AT lt_tables INTO DATA(lv_preview_tabname).
+      DATA(lv_preview_where) = lv_where.
+      READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_preview_tabname.
+      IF sy-subrc = 0.
+        lv_preview_where = |{ lv_where } and USMD_OBS_TCK eq 'X' and { lv_entity_field } in ( { lv_id_in_clause } )|.
+      ELSE.
+        lv_preview_where = |{ lv_where } and { lv_entity_field } in ( { lv_id_in_clause } )|.
+      ENDIF.
+
+      TRY.
+          SELECT COUNT(*) FROM (lv_preview_tabname) WHERE (lv_preview_where)
+            INTO @DATA(lv_preview_cnt).
+        CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
+          CONTINUE.
+      ENDTRY.
+
+      IF lv_preview_cnt > 0.
+        lv_total_cnt     = lv_total_cnt + lv_preview_cnt.
+        lv_confirm_text  = |{ lv_confirm_text }{ lv_preview_tabname }: { lv_preview_cnt } record(s){ lv_nl }|.
+      ENDIF.
+    ENDLOOP.
 *--------------------------------------------------------------------*  FINISH
 *--------------------------------------------------------------------*
 
@@ -498,14 +547,15 @@ START-OF-SELECTION.
 *--------------------------------------------------------------------*  START [2026-07-29]
 *--------------------------------------------------------------------*
 * Same restriction as the preview COUNT above: the check table is
-* restricted to USMD_OBS_TCK = 'X', every other table (text,
-* hierarchy) is restricted to the same obsolete IDs via
-* lv_id_in_clause - NOT just the edition number - so productive mode
-* only ever removes rows tied to an object already marked obsolete.
+* restricted to USMD_OBS_TCK = 'X' AND the user-selected ID list,
+* every other table (text, hierarchy) is restricted to the same
+* selected IDs via lv_id_in_clause - NOT just the edition number - so
+* productive mode only ever removes rows tied to an object that was
+* both already marked obsolete AND left checked in the review popup.
       lv_table_where = lv_where.
       READ TABLE lt_tck_tables TRANSPORTING NO FIELDS WITH KEY table_line = lv_tabname.
       IF sy-subrc = 0.
-        lv_table_where = |{ lv_where } and USMD_OBS_TCK eq 'X'|.
+        lv_table_where = |{ lv_where } and USMD_OBS_TCK eq 'X' and { lv_entity_field } in ( { lv_id_in_clause } )|.
       ELSE.
         lv_table_where = |{ lv_where } and { lv_entity_field } in ( { lv_id_in_clause } )|.
       ENDIF.
