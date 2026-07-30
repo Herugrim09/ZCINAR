@@ -6,6 +6,54 @@
 REPORT z_bg_sap_recommended_deletion.
 
 *&---------------------------------------------------------------------*
+*& Obsolete-object review row type + click handler for the CL_SALV_TABLE
+*& popup below. Declared at report (global) level - not inside
+*& START-OF-SELECTION - because a local CLASS DEFINITION/IMPLEMENTATION
+*& cannot be nested inside an event block, and the handler needs a
+*& type it can address by name (TY_OBSOLETE_ROW/_TAB) independent of
+*& where the actual table variable lives.
+*& Uses CL_SALV_TABLE's real checkbox mechanism: the CHK column is set
+*& to cell type CHECKBOX_HOTSPOT, which fires the LINK_CLICK event on
+*& click; the handler toggles CHK on the clicked row (via a data
+*& reference to the caller's table, bound with GET REFERENCE OF right
+*& before DISPLAY) and calls REFRESH so the toggle is visible
+*& immediately. This replaced two non-working attempts: (1)
+*& CL_SALV_COLUMN_TABLE has no accessible SET_EDITABLE, and (2)
+*& GET_SELECTIONS( )->SET_SELECTION_MODE only enables click-to-highlight
+*& row selection, not a visible checkbox (confirmed by testing - no
+*& checkbox column appeared at all).
+*&---------------------------------------------------------------------*
+TYPES: BEGIN OF ty_obsolete_row,
+         chk         TYPE c LENGTH 1,
+         id          TYPE string,
+         description TYPE string,
+       END OF ty_obsolete_row.
+TYPES ty_obsolete_row_tab TYPE STANDARD TABLE OF ty_obsolete_row WITH EMPTY KEY.
+
+CLASS lcl_obsolete_handler DEFINITION.
+  PUBLIC SECTION.
+    DATA mr_rows TYPE REF TO ty_obsolete_row_tab.
+    DATA mo_alv  TYPE REF TO cl_salv_table.
+    METHODS on_link_click FOR EVENT link_click OF cl_salv_events_table
+      IMPORTING row column.
+ENDCLASS.
+
+CLASS lcl_obsolete_handler IMPLEMENTATION.
+  METHOD on_link_click.
+    CHECK column = 'CHK'.
+    FIELD-SYMBOLS <row> TYPE ty_obsolete_row.
+    READ TABLE mr_rows->* ASSIGNING <row> INDEX row.
+    CHECK sy-subrc = 0.
+    IF <row>-chk = abap_true.
+      CLEAR <row>-chk.
+    ELSE.
+      <row>-chk = abap_true.
+    ENDIF.
+    mo_alv->refresh( ).
+  ENDMETHOD.
+ENDCLASS.
+
+*&---------------------------------------------------------------------*
 *& Code snippet: Resolve physical staging table names for a given
 *& MDG entity and edition.
 *&
@@ -109,28 +157,36 @@ REPORT z_bg_sap_recommended_deletion.
 *&   "No obsolete (USMD_OBS_TCK = 'X') records found ..." - previously
 *&   test mode had this same mismatch and would show misleading counts
 *&   even with nothing obsolete.
-*& [2026-07-30] Made the review ALV interactive: every row now shows
-*&   CL_SALV_TABLE's own built-in multi-select row checkboxes (turned
-*&   on via GET_SELECTIONS( )->SET_SELECTION_MODE( ...=>multiple ) and
-*&   pre-checked for all rows via SET_SELECTED_ROWS), instead of being
-*&   a read-only list. (An earlier attempt tried to fake a checkbox via
-*&   a custom "selected" column plus CL_SALV_COLUMN_TABLE=>SET_CELL_TYPE/
-*&   SET_EDITABLE - those methods don't exist/aren't accessible there
-*&   and the system rejected the syntax; this uses the ALV's real
-*&   selection-checkbox mechanism instead.) The ALV popup is shown
-*&   before the count preview/confirmation instead of after, so
-*&   lv_id_in_clause is rebuilt (via GET_SELECTED_ROWS) from only the
-*&   still-checked rows once the popup closes, and everything
-*&   downstream (preview COUNT, the Yes/No total, and the productive
-*&   DELETE) is restricted to that user-selected subset. If nothing is
-*&   left checked, the report stops with "No objects were selected for
-*&   deletion". This also fixed a related gap: the check table's WHERE
-*&   only ever filtered on USMD_OBS_TCK = 'X', never on the ID list, so
-*&   it would have deleted every obsolete row in the check table
-*&   regardless of what the user unchecked while other tables
-*&   respected the selection - the check table's WHERE now
-*&   additionally requires the entity field to be IN the selected-ID
-*&   list.
+*& [2026-07-30] Made the review ALV interactive: every row now shows a
+*&   real, clickable "Delete?" checkbox (CHK column, pre-checked for
+*&   all rows), so the user can uncheck any obsolete object they do
+*&   NOT want deleted. Implemented with CL_SALV_TABLE's cell type
+*&   CHECKBOX_HOTSPOT plus a LINK_CLICK event handler
+*&   (LCL_OBSOLETE_HANDLER, declared at report level together with
+*&   TY_OBSOLETE_ROW/_TAB) that toggles CHK on the clicked row and
+*&   calls REFRESH( ). This took three attempts: (1) a custom "selected"
+*&   column via CL_SALV_COLUMN_TABLE=>SET_CELL_TYPE/SET_EDITABLE -
+*&   those methods don't exist/aren't accessible there and the system
+*&   rejected the syntax; (2) GET_SELECTIONS( )->SET_SELECTION_MODE( ...
+*&   =>multiple ), which only enables click-to-highlight row selection,
+*&   not a visible checkbox (confirmed by testing - no checkbox column
+*&   appeared at all); (3) the classic FM REUSE_ALV_POPUP_TO_SELECT,
+*&   which does render a real checkbox but was dropped since it isn't
+*&   part of the modern/cloud-compatible ALV API surface. The ALV popup
+*&   is shown before the count preview/confirmation instead of after,
+*&   so lv_id_in_clause is rebuilt from only the still-checked rows
+*&   once the popup closes (the handler mutates lt_obsolete_row's own
+*&   memory via a GET REFERENCE OF binding, so no read-back call is
+*&   needed), and everything downstream (preview COUNT, the Yes/No
+*&   total, and the productive DELETE) is restricted to that
+*&   user-selected subset. If nothing is left checked, the report stops
+*&   with "No objects were selected for deletion". This also fixed a
+*&   related gap: the check table's WHERE only ever filtered on
+*&   USMD_OBS_TCK = 'X', never on the ID list, so it would have deleted
+*&   every obsolete row in the check table regardless of what the user
+*&   unchecked while other tables respected the selection - the check
+*&   table's WHERE now additionally requires the entity field to be IN
+*&   the selected-ID list.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -398,20 +454,27 @@ START-OF-SELECTION.
 * Example usage – productive mode (delete):
 *--------------------------------------------------------------------*  START [2026-07-30]
 *--------------------------------------------------------------------*
-* Show the actual obsolete objects (ID + Description) in a scrollable
-* ALV popup with a row-selection checkbox column in front of each row
-* (CL_SALV_TABLE's own built-in multi-select checkboxes, turned on via
-* GET_SELECTIONS( )->SET_SELECTION_MODE - not a custom editable field;
-* CL_SALV_COLUMN_TABLE has no SET_EDITABLE/accessible SET_CELL_TYPE
-* method, so an ad-hoc "selected" column cannot be made editable this
-* way), pre-checked for every row by default, so the user can uncheck
-* any obsolete objects they do NOT want deleted. The ALV's row type is
-* a fixed, generic (id, description) structure - not dynamically
-* built per entity - since the object's own key field name
+* Show the actual obsolete objects (chk, ID, Description) in a
+* scrollable CL_SALV_TABLE popup with a REAL, clickable checkbox in
+* the CHK column: cell type CHECKBOX_HOTSPOT fires the LINK_CLICK
+* event on click, handled by LCL_OBSOLETE_HANDLER (declared at report
+* level, above) which toggles CHK on the clicked row and calls
+* REFRESH. This replaced two non-working attempts: (1)
+* CL_SALV_COLUMN_TABLE has no accessible SET_EDITABLE method, and (2)
+* GET_SELECTIONS( )->SET_SELECTION_MODE only enables click-to-highlight
+* row selection, not a visible checkbox (confirmed by testing - no
+* checkbox column appeared at all); a classic REUSE_ALV_POPUP_TO_SELECT
+* variant was also tried and dropped since that legacy function module
+* isn't part of the modern/cloud-compatible ALV API surface. CHK is
+* pre-set to 'X' for every row before display, so the default is
+* "delete everything obsolete" unless the user unchecks something.
+* The ALV's row type (TY_OBSOLETE_ROW/_TAB, declared at report level)
+* is a fixed, generic (chk, id, description) structure - not
+* dynamically built per entity - since the object's own key field name
 * (lv_entity_field, e.g. /1MD/0GCCTRG) changes per entity/model and
 * building a dynamic ALV structure per entity is unnecessary extra
-* complexity here; we just move the dynamically-read ID value into
-* the generic "id" component instead.
+* complexity here; we just move the dynamically-read ID value into the
+* generic "id" component instead.
 * Description comes from the text table's TXTSH field (same field
 * name on every entity's text table), matched by the same dynamic ID
 * field + edition (the text table does not carry USMD_OBS_TCK, so it
@@ -420,11 +483,7 @@ START-OF-SELECTION.
 * lt_obsolete_ids and lv_tck_tabname were already resolved above
 * (needed there to build lv_id_in_clause) - reused here as-is instead
 * of re-reading the check table a second time.
-    TYPES: BEGIN OF ty_obsolete_row,
-             id          TYPE string,
-             description TYPE string,
-           END OF ty_obsolete_row.
-    DATA lt_obsolete_row TYPE STANDARD TABLE OF ty_obsolete_row WITH EMPTY KEY.
+    DATA lt_obsolete_row TYPE ty_obsolete_row_tab.
     DATA lv_description  TYPE string.
 
     READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
@@ -442,11 +501,11 @@ START-OF-SELECTION.
         ENDTRY.
       ENDIF.
 
-      APPEND VALUE ty_obsolete_row( id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
+      APPEND VALUE ty_obsolete_row( chk = abap_true id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
     ENDLOOP.
 
-* Default: treat all obsolete objects as selected, so if the ALV
-* cannot be built at all we still fall back to the pre-selection
+* Default: treat all obsolete objects as selected, so if the popup
+* cannot be shown at all we still fall back to the pre-selection
 * behaviour (delete everything obsolete) instead of silently deleting
 * nothing.
     CLEAR lv_id_in_clause.
@@ -469,16 +528,17 @@ START-OF-SELECTION.
 
       IF lo_obsolete_alv IS BOUND.
         lo_obsolete_alv->get_columns( )->set_optimize( abap_true ).
-        lo_obsolete_alv->get_selections( )->set_selection_mode( if_salv_c_selection_mode=>multiple ).
 
-        " Pre-check every row (1..n) so the default is "delete everything
-        " obsolete", matching the previous behaviour unless the user
-        " unchecks something.
-        DATA lt_all_rows TYPE salv_t_row.
-        DO lines( lt_obsolete_row ) TIMES.
-          APPEND sy-index TO lt_all_rows.
-        ENDDO.
-        lo_obsolete_alv->get_selections( )->set_selected_rows( lt_all_rows ).
+        DATA(lo_chk_column) = lo_obsolete_alv->get_columns( )->get_column( 'CHK' ).
+        lo_chk_column->set_short_text( 'Del?' ).
+        lo_chk_column->set_medium_text( 'Delete?' ).
+        lo_chk_column->set_long_text( 'Delete this object?' ).
+        CAST cl_salv_column_list( lo_chk_column )->set_cell_type( if_salv_c_cell_type=>checkbox_hotspot ).
+
+        DATA(lo_obsolete_handler) = NEW lcl_obsolete_handler( ).
+        GET REFERENCE OF lt_obsolete_row INTO lo_obsolete_handler->mr_rows.
+        lo_obsolete_handler->mo_alv = lo_obsolete_alv.
+        SET HANDLER lo_obsolete_handler->on_link_click FOR lo_obsolete_alv->get_event( ).
 
         lo_obsolete_alv->set_screen_popup(
           start_column = 5
@@ -487,19 +547,16 @@ START-OF-SELECTION.
           end_line     = 25 ).
         lo_obsolete_alv->display( ).
 
-        " Modal popup - display( ) only returns once the user closes it,
-        " so the selection below reflects whatever was (un)checked.
-        DATA(lt_selected_rows) = lo_obsolete_alv->get_selections( )->get_selected_rows( ).
-
+        " Modal popup - display( ) only returns once the user closes it.
+        " The handler toggled CHK directly on lt_obsolete_row's memory
+        " via the GET REFERENCE OF binding above, so it already reflects
+        " every click made while the popup was open.
         CLEAR lv_id_in_clause.
-        LOOP AT lt_selected_rows INTO DATA(lv_row_idx).
-          READ TABLE lt_obsolete_row INDEX lv_row_idx INTO DATA(lv_selected_row).
-          IF sy-subrc = 0.
-            IF lv_id_in_clause IS INITIAL.
-              lv_id_in_clause = |'{ lv_selected_row-id }'|.
-            ELSE.
-              lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_selected_row-id }'|.
-            ENDIF.
+        LOOP AT lt_obsolete_row INTO DATA(lv_selected_row) WHERE chk = abap_true.
+          IF lv_id_in_clause IS INITIAL.
+            lv_id_in_clause = |'{ lv_selected_row-id }'|.
+          ELSE.
+            lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_selected_row-id }'|.
           ENDIF.
         ENDLOOP.
       ENDIF.
