@@ -80,7 +80,28 @@ MODULE user_command_9000 INPUT.
 
   CASE sy-ucomm.
     WHEN 'BACK' OR 'EXIT' OR 'CANC'.
-      LEAVE TO SCREEN 1000.
+* LEAVE TO SCREEN 1000 does NOT work here: that raises "Selection
+* screen ... 1000 was not called using CALL SELECTION-SCREEN" at
+* runtime, because the report's own selection screen is opened
+* automatically by the ABAP runtime (via SE38/SA38 execute), not via
+* an explicit CALL SELECTION-SCREEN statement in this program - LEAVE
+* TO SCREEN can only jump to a screen that was entered that way.
+* SUBMIT ... VIA SELECTION-SCREEN restarts the report and forces the
+* selection screen to display again instead of auto-executing, with
+* WITH carrying the user's current parameter values forward so it
+* feels like "going back" rather than starting over blank.
+      SUBMIT z_bg_sap_recommended_deletion VIA SELECTION-SCREEN
+        WITH p_model  = p_model
+        WITH p_entity = p_entity
+        WITH p_edtn   = p_edtn
+        WITH p_delall = p_delall
+        WITH p_kattr1 = p_kattr1
+        WITH p_kval1  = p_kval1
+        WITH p_kattr2 = p_kattr2
+        WITH p_kval2  = p_kval2
+        WITH p_kattr3 = p_kattr3
+        WITH p_kval3  = p_kval3
+        WITH p_test   = p_test.
     WHEN 'CONF'.
       LEAVE SCREEN.
     WHEN 'SELALL'.
@@ -270,6 +291,15 @@ ENDMODULE.
 *&   POPUP_TO_CONFIRM Yes/No dialog, and DELETE loop are unchanged.
 *&   See the setup comment above TY_OBSOLETE_ROW (report level) for
 *&   the manual Screen Painter/Menu Painter steps this requires.
+*& [2026-07-30] Fixed a runtime dump on BACK/EXIT/CANC: "Selection
+*&   screen Z_BG_SAP_RECOMMENDED_DELETION 1000 was not called using
+*&   CALL SELECTION-SCREEN". LEAVE TO SCREEN 1000 only works if the
+*&   selection screen was entered via an explicit CALL SELECTION-SCREEN
+*&   statement, which is not the case here - the runtime opens it
+*&   automatically on execute (SE38/SA38). Replaced with
+*&   SUBMIT z_bg_sap_recommended_deletion VIA SELECTION-SCREEN, passing
+*&   every current parameter value via WITH so the selection screen
+*&   reappears pre-filled instead of blank.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
