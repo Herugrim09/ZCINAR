@@ -36,6 +36,8 @@ CLASS lcl_obsolete_handler DEFINITION.
     DATA mo_alv  TYPE REF TO cl_salv_table.
     METHODS on_link_click FOR EVENT link_click OF cl_salv_events_table
       IMPORTING row column.
+    METHODS on_added_function FOR EVENT added_function OF cl_salv_events_table
+      IMPORTING e_salv_function.
 ENDCLASS.
 
 CLASS lcl_obsolete_handler IMPLEMENTATION.
@@ -50,6 +52,30 @@ CLASS lcl_obsolete_handler IMPLEMENTATION.
       <row>-chk = abap_true.
     ENDIF.
     mo_alv->refresh( ).
+  ENDMETHOD.
+
+  METHOD on_added_function.
+* Custom toolbar buttons "Select All" / "Deselect All", wired to our
+* own CHK column via the ZOBSDEL_REVIEW PF-STATUS (see the setup
+* comment above the SET_SCREEN_STATUS call in START-OF-SELECTION) -
+* the ALV's native Select All/Deselect All toolbar functions only
+* affect its own internal row-selection state, never a custom
+* checkbox column, so this is the only way to make bulk-check/uncheck
+* buttons actually flip CHK.
+    CASE e_salv_function.
+      WHEN 'SELALL'.
+        FIELD-SYMBOLS <row_all> TYPE ty_obsolete_row.
+        LOOP AT mr_rows->* ASSIGNING <row_all>.
+          <row_all>-chk = abap_true.
+        ENDLOOP.
+        mo_alv->refresh( ).
+      WHEN 'DESELALL'.
+        FIELD-SYMBOLS <row_none> TYPE ty_obsolete_row.
+        LOOP AT mr_rows->* ASSIGNING <row_none>.
+          CLEAR <row_none>-chk.
+        ENDLOOP.
+        mo_alv->refresh( ).
+    ENDCASE.
   ENDMETHOD.
 ENDCLASS.
 
@@ -187,6 +213,24 @@ ENDCLASS.
 *&   unchecked while other tables respected the selection - the check
 *&   table's WHERE now additionally requires the entity field to be IN
 *&   the selected-ID list.
+*& [2026-07-30] Added ID/Description column headers (were blank) and
+*&   real "Select All"/"Deselect All" toolbar buttons for the CHK
+*&   column. The ALV's OWN built-in Select All/Deselect All buttons
+*&   only ever affect its internal row-selection state, never a custom
+*&   checkbox column - clicking them visibly did nothing to CHK.
+*&   CL_SALV_TABLE has no equivalent of the classic ALV Grid's
+*&   LAYOUT-BOX_FIELDNAME (which natively wires a checkbox field to
+*&   those buttons - the reason REUSE_ALV_POPUP_TO_SELECT/
+*&   REUSE_ALV_GRID_DISPLAY get this for free), so two custom toolbar
+*&   functions (SELALL/DESELALL) were added instead, requiring a
+*&   PF-STATUS named ZOBSDEL_REVIEW in this program (a Menu Painter
+*&   design-time object - created manually via SE38 -> Goto ->
+*&   PF-Status, not by editing this source) wired via
+*&   SET_SCREEN_STATUS and handled by the new ON_ADDED_FUNCTION method
+*&   on LCL_OBSOLETE_HANDLER, which sets/clears CHK for every row and
+*&   refreshes. If the PF-STATUS doesn't exist yet, SET_SCREEN_STATUS
+*&   fails gracefully (caught, message written) and individual row
+*&   checkboxes keep working regardless.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -535,10 +579,39 @@ START-OF-SELECTION.
         lo_chk_column->set_long_text( 'Delete this object?' ).
         CAST cl_salv_column_list( lo_chk_column )->set_cell_type( if_salv_c_cell_type=>checkbox_hotspot ).
 
+        DATA(lo_id_column) = lo_obsolete_alv->get_columns( )->get_column( 'ID' ).
+        lo_id_column->set_short_text( 'ID' ).
+        lo_id_column->set_medium_text( 'Identifier' ).
+        lo_id_column->set_long_text( 'Identifier' ).
+
+        DATA(lo_description_column) = lo_obsolete_alv->get_columns( )->get_column( 'DESCRIPTION' ).
+        lo_description_column->set_short_text( 'Descr.' ).
+        lo_description_column->set_medium_text( 'Description' ).
+        lo_description_column->set_long_text( 'Description' ).
+
         DATA(lo_obsolete_handler) = NEW lcl_obsolete_handler( ).
         GET REFERENCE OF lt_obsolete_row INTO lo_obsolete_handler->mr_rows.
         lo_obsolete_handler->mo_alv = lo_obsolete_alv.
         SET HANDLER lo_obsolete_handler->on_link_click FOR lo_obsolete_alv->get_event( ).
+        SET HANDLER lo_obsolete_handler->on_added_function FOR lo_obsolete_alv->get_event( ).
+
+* Requires a PF-STATUS named ZOBSDEL_REVIEW to exist in THIS program
+* (created manually via SE38 -> Goto -> PF-Status, since GUI statuses
+* are Menu Painter design-time objects and cannot be created by
+* editing this source file). It must contain two application toolbar
+* function codes: SELALL ("Select All") and DESELALL ("Deselect All")
+* - see the setup steps provided alongside this change. Without it,
+* SET_SCREEN_STATUS raises a screen-status-not-found runtime error, so
+* it is wrapped in TRY/CATCH to fail gracefully (individual row
+* checkboxes still work either way).
+        TRY.
+            lo_obsolete_alv->set_screen_status(
+              pfstatus      = 'ZOBSDEL_REVIEW'
+              report        = sy-repid
+              set_functions = lo_obsolete_alv->c_functions_all ).
+          CATCH cx_root INTO DATA(lx_salv_status).
+            WRITE: |Could not load PF-STATUS ZOBSDEL_REVIEW ({ lx_salv_status->get_text( ) }) - Select All/Deselect All buttons unavailable; individual row checkboxes still work.|, /.
+        ENDTRY.
 
         lo_obsolete_alv->set_screen_popup(
           start_column = 5
