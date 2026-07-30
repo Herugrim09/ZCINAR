@@ -1,9 +1,9 @@
 *&---------------------------------------------------------------------*
-*& Include Z_BG_SAP_RECOMMENDED_DELETION_ALV_FC
+*& Include Z_BG_SAP_RECOMMENDED_DELETION_ALV
 *&---------------------------------------------------------------------*
 *& Obsolete-object review list. Self-contained (DEFINITION and
 *& IMPLEMENTATION together) since nothing calls this class before this
-*& include is reached (only _LOGIC does, which comes after _ALV_FC).
+*& include is reached (only _LOGIC does, which comes after _ALV).
 *&
 *& Displayed as a full-screen ALV (SET_SCREEN_STATUS with PF-STATUS
 *& ZOBSDEL_SCR9000, then DISPLAY( ) with no SET_SCREEN_POPUP call) -

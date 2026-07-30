@@ -227,29 +227,33 @@
 *&   control back to the code after DISPLAY( ) so the count-preview/
 *&   POPUP_TO_CONFIRM step actually runs.
 *& [2026-07-30] Restructured the whole program from one file into the
-*&   standard TOP/LC/DISPL/ALV_FC/LOGIC include layout (matching the
+*&   standard TOP/LC/DISPL/ALV/LOGIC include layout (matching the
 *&   team's zmdg_r_key_map_util pattern) and replaced the two FORMs
 *&   (f4_entity, f4_edition) and the inline START-OF-SELECTION
 *&   procedural code with local classes - no static/CLASS-METHODS
 *&   anywhere, every call site uses a throwaway instance instead
-*&   (e.g. NEW lcl_obsolete_deletion( )->f4_entity( )):
-*&   - LCL_OBSOLETE_HANDLER (unchanged) and LCL_OBSOLETE_DELETION's
-*&     CLASS DEFINITION live in _LC; LCL_OBSOLETE_DELETION's
-*&     CLASS IMPLEMENTATION lives in _LOGIC. This split is required
-*&     purely for name visibility: _DISPL's AT SELECTION-SCREEN ON
-*&     VALUE-REQUEST blocks instantiate LCL_OBSOLETE_DELETION to call
-*&     its F4 methods, and _DISPL is included before _LOGIC - ABAP
-*&     resolves class definitions top-down just like it does DATA
-*&     (same rule that caused the P_MODEL/MODULE issue above), so the
-*&     class interface has to be visible before _DISPL, even though its
-*&     method bodies are written later, in _LOGIC. F4_ENTITY/F4_EDITION
-*&     take no parameters and read P_MODEL/SY-REPID/SY-DYNNR directly,
-*&     same as the FORMs they replace, so a fresh throwaway instance per
-*&     F4 request is enough - no persistent object reference is needed.
+*&   (e.g. NEW lcl_f4_helper( )->f4_entity( )):
+*&   - LCL_OBSOLETE_HANDLER (unchanged) lives in _LC, alongside a new
+*&     small class LCL_F4_HELPER that replaces both FORMs. F4 help was
+*&     deliberately NOT put on the main LCL_OBSOLETE_DELETION class: that
+*&     class's RUN_PRODUCTIVE_MODE needs LCL_OBSOLETE_ALV_FC (_ALV
+*&     include, included after _DISPL), so if LCL_OBSOLETE_DELETION had
+*&     to be visible before _DISPL too (for F4), its DEFINITION and
+*&     IMPLEMENTATION would have had to live in different includes - ABAP
+*&     resolves class definitions top-down just like it does DATA (same
+*&     rule that caused the P_MODEL/MODULE issue above). Giving F4 help
+*&     its own tiny, dependency-free class in _LC instead means
+*&     LCL_OBSOLETE_DELETION never has to be visible before _DISPL, so it
+*&     lives entirely in _LOGIC - DEFINITION and IMPLEMENTATION together,
+*&     no split. F4_ENTITY takes no parameters (reads SY-REPID/SY-DYNNR
+*&     directly); F4_EDITION takes IV_MODEL as a parameter instead of
+*&     reading PARAMETER P_MODEL directly, since _LC (where this class
+*&     lives) is included before _DISPL declares P_MODEL - the _DISPL
+*&     call site passes iv_model = p_model in.
 *&   - The former inline CL_SALV_TABLE review-list code (factory,
 *&     column setup, handler wiring, SET_SCREEN_STATUS, DISPLAY( ),
 *&     selected-rows readback) is now an instance method on
-*&     LCL_OBSOLETE_ALV_FC, in _ALV_FC, called as
+*&     LCL_OBSOLETE_ALV_FC, in _ALV, called as
 *&     NEW lcl_obsolete_alv_fc( )->show_and_get_selected_ids( ... ).
 *&   - The three near-duplicate per-table WHERE-clause blocks (test
 *&     mode's count loop, productive mode's preview-count loop, and the

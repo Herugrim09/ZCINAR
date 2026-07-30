@@ -1,10 +1,65 @@
 *&---------------------------------------------------------------------*
 *& Include Z_BG_SAP_RECOMMENDED_DELETION_LOGIC
 *&---------------------------------------------------------------------*
-*& CLASS IMPLEMENTATION for LCL_OBSOLETE_DELETION (DEFINITION is in the
-*& _LC include - see the comment there for why) plus the
-*& START-OF-SELECTION trigger.
+*& LCL_OBSOLETE_DELETION - the main deletion process - plus the
+*& START-OF-SELECTION trigger. DEFINITION and IMPLEMENTATION live
+*& together here, no split: nothing before this include needs to call
+*& this class (F4 help is handled by the separate LCL_F4_HELPER in
+*& _LC instead, precisely so that this class doesn't have to be), and
+*& this class's own RUN_PRODUCTIVE_MODE needs LCL_OBSOLETE_ALV_FC
+*& (_ALV include, included just before this one) - so _LOGIC is the
+*& first point in the program where this class can be both declared
+*& and used.
 *&---------------------------------------------------------------------*
+CLASS lcl_obsolete_deletion DEFINITION.
+  PUBLIC SECTION.
+    METHODS run
+      IMPORTING iv_model  TYPE usmd_model
+                iv_entity TYPE usmd_entity
+                iv_edtn   TYPE usmd_edition
+                iv_delall TYPE abap_bool
+                iv_kattr1 TYPE name_feld
+                iv_kval1  TYPE string
+                iv_kattr2 TYPE name_feld
+                iv_kval2  TYPE string
+                iv_kattr3 TYPE name_feld
+                iv_kval3  TYPE string
+                iv_test   TYPE abap_bool.
+
+  PRIVATE SECTION.
+    DATA mv_model        TYPE usmd_model.
+    DATA mv_entity       TYPE usmd_entity.
+    DATA mv_edtn         TYPE usmd_edition.
+    DATA mv_delall       TYPE abap_bool.
+    DATA mv_kattr1       TYPE name_feld.
+    DATA mv_kval1        TYPE string.
+    DATA mv_kattr2       TYPE name_feld.
+    DATA mv_kval2        TYPE string.
+    DATA mv_kattr3       TYPE name_feld.
+    DATA mv_kval3        TYPE string.
+    DATA mv_test         TYPE abap_bool.
+    DATA mv_edtn_number  TYPE usmd020c-usmd_edtn_number.
+    DATA mt_tables       TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
+    DATA mt_tck_tables   TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
+    DATA mt_txt_tables   TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
+    DATA mv_entity_field TYPE string.
+    DATA mv_where        TYPE string.
+    DATA mt_obsolete_ids TYPE string_table.
+    DATA mv_id_in_clause TYPE string.
+
+    METHODS resolve_edition_number.
+    METHODS resolve_physical_tables.
+    METHODS build_where_clause.
+    METHODS resolve_obsolete_ids
+      RETURNING VALUE(rv_ok) TYPE abap_bool.
+    METHODS run_test_mode.
+    METHODS run_productive_mode.
+    METHODS build_table_where
+      IMPORTING iv_tabname                     TYPE tabname16
+                iv_restrict_check_table_by_ids TYPE abap_bool DEFAULT abap_true
+      RETURNING VALUE(rv_where)                TYPE string.
+ENDCLASS.
+
 CLASS lcl_obsolete_deletion IMPLEMENTATION.
 
   METHOD run.
@@ -274,60 +329,6 @@ CLASS lcl_obsolete_deletion IMPLEMENTATION.
         CATCH cx_sy_dynamic_osql_semantics cx_sy_dynamic_osql_syntax.
       ENDTRY.
     ENDLOOP.
-  ENDMETHOD.
-
-  METHOD f4_entity.
-    TYPES: BEGIN OF ty_val,
-             usmd_entity TYPE usmd_entity,
-           END OF ty_val.
-    DATA lt_vals TYPE STANDARD TABLE OF ty_val WITH EMPTY KEY.
-
-    SELECT usmd_entity
-      FROM usmd0020
-      WHERE usmd_model   = '0G'
-        AND usmd_objstat = 'A'
-      ORDER BY usmd_entity
-      INTO CORRESPONDING FIELDS OF TABLE @lt_vals.
-
-    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
-      EXPORTING
-        retfield    = 'USMD_ENTITY'
-        dynpprog    = sy-repid
-        dynpnr      = sy-dynnr
-        dynprofield = 'P_ENTITY'
-        value_org   = 'S'
-      TABLES
-        value_tab   = lt_vals
-      EXCEPTIONS
-        OTHERS      = 0.
-  ENDMETHOD.
-
-  METHOD f4_edition.
-    TYPES: BEGIN OF ty_val,
-             usmd_edition TYPE usmd_edition,
-           END OF ty_val.
-    DATA lt_vals  TYPE STANDARD TABLE OF ty_val WITH EMPTY KEY.
-    DATA lv_etype TYPE usmd020c-usmd_edtn_type.
-
-    CONCATENATE p_model '_ALL' INTO lv_etype.
-
-    SELECT usmd_edition
-      FROM usmd020c
-      WHERE usmd_edtn_type = @lv_etype
-      ORDER BY usmd_edition
-      INTO CORRESPONDING FIELDS OF TABLE @lt_vals.
-
-    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
-      EXPORTING
-        retfield    = 'USMD_EDITION'
-        dynpprog    = sy-repid
-        dynpnr      = sy-dynnr
-        dynprofield = 'P_EDTN'
-        value_org   = 'S'
-      TABLES
-        value_tab   = lt_vals
-      EXCEPTIONS
-        OTHERS      = 0.
   ENDMETHOD.
 
 ENDCLASS.

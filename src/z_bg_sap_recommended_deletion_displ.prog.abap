@@ -41,7 +41,7 @@ INITIALIZATION.
   %_p_test_%_app_%-text = 'Test Run'.
 
 AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_edtn.
-  NEW lcl_obsolete_deletion( )->f4_edition( ).
+  NEW lcl_f4_helper( )->f4_edition( iv_model = p_model ).
 
 AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_entity.
-  NEW lcl_obsolete_deletion( )->f4_entity( ).
+  NEW lcl_f4_helper( )->f4_entity( ).

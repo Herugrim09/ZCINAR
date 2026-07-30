@@ -6,7 +6,7 @@
 
 *&---------------------------------------------------------------------*
 *& Obsolete-object review click handler for the CL_SALV_TABLE
-*& full-screen list built by LCL_OBSOLETE_ALV_FC (_ALV_FC include).
+*& full-screen list built by LCL_OBSOLETE_ALV_FC (_ALV include).
 *& Uses CL_SALV_TABLE's real checkbox mechanism: the CHK column is set
 *& to cell type CHECKBOX_HOTSPOT, which fires the LINK_CLICK event on
 *& click; the handler toggles CHK on the clicked row (via a data
@@ -45,7 +45,7 @@ CLASS lcl_obsolete_handler IMPLEMENTATION.
   METHOD on_added_function.
 * Custom toolbar buttons "Select All" / "Deselect All", wired to our
 * own CHK column via the ZOBSDEL_SCR9000 PF-STATUS (see the setup
-* comment in LCL_OBSOLETE_ALV_FC, _ALV_FC include) - the ALV's native
+* comment in LCL_OBSOLETE_ALV_FC, _ALV include) - the ALV's native
 * Select All/Deselect All toolbar functions only affect its own
 * internal row-selection state, never a custom checkbox column, so
 * this is the only way to make bulk-check/uncheck buttons actually
@@ -77,73 +77,84 @@ CLASS lcl_obsolete_handler IMPLEMENTATION.
 ENDCLASS.
 
 *&---------------------------------------------------------------------*
-*& CLASS DEFINITION only (no IMPLEMENTATION) for the main deletion
-*& process. The IMPLEMENTATION is in the _LOGIC include, further down
-*& the INCLUDE chain - but the DEFINITION has to live here, before
-*& _DISPL, because _DISPL's AT SELECTION-SCREEN ON VALUE-REQUEST blocks
-*& instantiate this class to call its F4 methods, and ABAP resolves
-*& class definitions top-down within a program just like it does DATA
-*& (a class used before its DEFINITION has been read is unknown to the
-*& compiler). Splitting DEFINITION and IMPLEMENTATION across includes
-*& is normal, ordinary ABAP - only the DEFINITION needs to precede use.
+*& F4 value-help helper - a small, fully self-contained class (no
+*& DEFINITION/IMPLEMENTATION split needed) with no dependency on
+*& anything from _ALV, unlike the main LCL_OBSOLETE_DELETION class
+*& (_LOGIC include) - that is precisely why F4 help lives on its own
+*& class instead of on LCL_OBSOLETE_DELETION: keeping it separate means
+*& _DISPL only ever needs to know about this tiny class, so
+*& LCL_OBSOLETE_DELETION itself (whose RUN method depends on
+*& LCL_OBSOLETE_ALV_FC, defined later in _ALV) never has to be visible
+*& before _DISPL, and can live entirely in _LOGIC - DEFINITION and
+*& IMPLEMENTATION together, no split.
 *&
-*& No static/CLASS-METHODS are used anywhere: F4_ENTITY/F4_EDITION are
-*& plain instance methods (called via a throwaway NEW instance from
-*& _DISPL, since they take no parameters and read the PARAMETERS/
-*& SY-REPID/SY-DYNNR directly, same as the FORMs they replace), and RUN
-*& is likewise a plain instance method (called via a throwaway NEW
-*& instance from _LOGIC's START-OF-SELECTION, with the gathered
-*& selection-screen values passed in as IMPORTING parameters and stored
-*& into instance attributes for the private helper methods to share).
+*& F4_ENTITY/F4_EDITION are plain instance methods (no static/
+*& CLASS-METHODS anywhere in this program), called via a throwaway NEW
+*& instance from _DISPL, and read SY-REPID/SY-DYNNR directly same as
+*& the FORMs they replace. F4_EDITION takes IV_MODEL as a parameter
+*& (rather than reading PARAMETER P_MODEL directly) purely because
+*& this class lives in _LC, before _DISPL declares P_MODEL - passing it
+*& in from the _DISPL call site avoids that forward reference.
 *&---------------------------------------------------------------------*
-CLASS lcl_obsolete_deletion DEFINITION.
+CLASS lcl_f4_helper DEFINITION.
   PUBLIC SECTION.
-    METHODS run
-      IMPORTING iv_model  TYPE usmd_model
-                iv_entity TYPE usmd_entity
-                iv_edtn   TYPE usmd_edition
-                iv_delall TYPE abap_bool
-                iv_kattr1 TYPE name_feld
-                iv_kval1  TYPE string
-                iv_kattr2 TYPE name_feld
-                iv_kval2  TYPE string
-                iv_kattr3 TYPE name_feld
-                iv_kval3  TYPE string
-                iv_test   TYPE abap_bool.
-
     METHODS f4_entity.
-    METHODS f4_edition.
+    METHODS f4_edition
+      IMPORTING iv_model TYPE usmd_model.
+ENDCLASS.
 
-  PRIVATE SECTION.
-    DATA mv_model        TYPE usmd_model.
-    DATA mv_entity       TYPE usmd_entity.
-    DATA mv_edtn         TYPE usmd_edition.
-    DATA mv_delall       TYPE abap_bool.
-    DATA mv_kattr1       TYPE name_feld.
-    DATA mv_kval1        TYPE string.
-    DATA mv_kattr2       TYPE name_feld.
-    DATA mv_kval2        TYPE string.
-    DATA mv_kattr3       TYPE name_feld.
-    DATA mv_kval3        TYPE string.
-    DATA mv_test         TYPE abap_bool.
-    DATA mv_edtn_number  TYPE usmd020c-usmd_edtn_number.
-    DATA mt_tables       TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
-    DATA mt_tck_tables   TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
-    DATA mt_txt_tables   TYPE STANDARD TABLE OF tabname16 WITH EMPTY KEY.
-    DATA mv_entity_field TYPE string.
-    DATA mv_where        TYPE string.
-    DATA mt_obsolete_ids TYPE string_table.
-    DATA mv_id_in_clause TYPE string.
+CLASS lcl_f4_helper IMPLEMENTATION.
+  METHOD f4_entity.
+    TYPES: BEGIN OF ty_val,
+             usmd_entity TYPE usmd_entity,
+           END OF ty_val.
+    DATA lt_vals TYPE STANDARD TABLE OF ty_val WITH EMPTY KEY.
 
-    METHODS resolve_edition_number.
-    METHODS resolve_physical_tables.
-    METHODS build_where_clause.
-    METHODS resolve_obsolete_ids
-      RETURNING VALUE(rv_ok) TYPE abap_bool.
-    METHODS run_test_mode.
-    METHODS run_productive_mode.
-    METHODS build_table_where
-      IMPORTING iv_tabname                     TYPE tabname16
-                iv_restrict_check_table_by_ids TYPE abap_bool DEFAULT abap_true
-      RETURNING VALUE(rv_where)                TYPE string.
+    SELECT usmd_entity
+      FROM usmd0020
+      WHERE usmd_model   = '0G'
+        AND usmd_objstat = 'A'
+      ORDER BY usmd_entity
+      INTO CORRESPONDING FIELDS OF TABLE @lt_vals.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+        retfield    = 'USMD_ENTITY'
+        dynpprog    = sy-repid
+        dynpnr      = sy-dynnr
+        dynprofield = 'P_ENTITY'
+        value_org   = 'S'
+      TABLES
+        value_tab   = lt_vals
+      EXCEPTIONS
+        OTHERS      = 0.
+  ENDMETHOD.
+
+  METHOD f4_edition.
+    TYPES: BEGIN OF ty_val,
+             usmd_edition TYPE usmd_edition,
+           END OF ty_val.
+    DATA lt_vals  TYPE STANDARD TABLE OF ty_val WITH EMPTY KEY.
+    DATA lv_etype TYPE usmd020c-usmd_edtn_type.
+
+    CONCATENATE iv_model '_ALL' INTO lv_etype.
+
+    SELECT usmd_edition
+      FROM usmd020c
+      WHERE usmd_edtn_type = @lv_etype
+      ORDER BY usmd_edition
+      INTO CORRESPONDING FIELDS OF TABLE @lt_vals.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+        retfield    = 'USMD_EDITION'
+        dynpprog    = sy-repid
+        dynpnr      = sy-dynnr
+        dynprofield = 'P_EDTN'
+        value_org   = 'S'
+      TABLES
+        value_tab   = lt_vals
+      EXCEPTIONS
+        OTHERS      = 0.
+  ENDMETHOD.
 ENDCLASS.
