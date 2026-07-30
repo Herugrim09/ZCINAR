@@ -6,37 +6,31 @@
 REPORT z_bg_sap_recommended_deletion.
 
 *&---------------------------------------------------------------------*
-*& Obsolete-object review screen (dynpro 9000). Declared at report
-*& (global) level - not inside START-OF-SELECTION - because MODULE/
-*& ENDMODULE cannot be nested inside an event block, and the PBO/PAI
-*& modules need to reach GT_OBSOLETE_ROW independent of where the
-*& productive-mode logic that fills it lives.
+*& Obsolete-object review row type + click handler for the CL_SALV_TABLE
+*& full-screen list below. Declared at report (global) level - not
+*& inside START-OF-SELECTION - because a local CLASS DEFINITION/
+*& IMPLEMENTATION cannot be nested inside an event block, and the
+*& handler needs a type it can address by name (TY_OBSOLETE_ROW/_TAB)
+*& independent of where the actual table variable lives.
+*& Uses CL_SALV_TABLE's real checkbox mechanism: the CHK column is set
+*& to cell type CHECKBOX_HOTSPOT, which fires the LINK_CLICK event on
+*& click; the handler toggles CHK on the clicked row (via a data
+*& reference to the caller's table, bound with GET REFERENCE OF right
+*& before DISPLAY) and calls REFRESH so the toggle is visible
+*& immediately. This replaced two non-working attempts: (1)
+*& CL_SALV_COLUMN_TABLE has no accessible SET_EDITABLE, and (2)
+*& GET_SELECTIONS( )->SET_SELECTION_MODE only enables click-to-highlight
+*& row selection, not a visible checkbox (confirmed by testing - no
+*& checkbox column appeared at all).
 *&
-*& Screen 9000 shows every obsolete object with a real, editable
-*& checkbox column (CHK), backed by CL_GUI_ALV_GRID's native EDIT +
-*& CHECKBOX fieldcatalog attributes - no hotspot/event-handler hack
-*& needed (unlike the CL_SALV_TABLE popup this replaced, which had no
-*& accessible SET_EDITABLE and had to fake a checkbox via
-*& CHECKBOX_HOTSPOT cell type + a LINK_CLICK event handler).
-*&
-*& REQUIRES MANUAL SETUP IN THE SAP SYSTEM (Screen Painter / Menu
-*& Painter design-time objects - cannot be created by editing this
-*& source file):
-*&   1. Screen 9000, program Z_BG_SAP_RECOMMENDED_DELETION:
-*&        - Screen type: Normal screen (NOT Modal dialog box) - this is
-*&          what makes it a real screen instead of a popup.
-*&        - One Custom Control element named CUSTOM_CTRL, sized to
-*&          fill most of the screen (hosts the ALV Grid).
-*&        - Flow logic:
-*&            PROCESS BEFORE OUTPUT.
-*&              MODULE status_9000.
-*&            PROCESS AFTER INPUT.
-*&              MODULE user_command_9000.
-*&   2. PF-STATUS ZOBSDEL_SCR9000, same program:
-*&        - Standard functions BACK, EXIT, CANC (the status's own
-*&          Back/Exit/Cancel buttons).
-*&        - Custom pushbuttons CONF ("Continue"), SELALL ("Select
-*&          All"), DESELALL ("Deselect All").
+*& Displayed as a full-screen ALV (SET_SCREEN_STATUS with PF-STATUS
+*& ZOBSDEL_SCR9000, then DISPLAY( ) with no SET_SCREEN_POPUP call) -
+*& not a small modal dialog box, and not a hand-built dynpro either.
+*& Requires PF-STATUS ZOBSDEL_SCR9000 to exist in this program (Menu
+*& Painter design-time object - created manually, see the comment above
+*& the SET_SCREEN_STATUS call in START-OF-SELECTION), containing
+*& standard functions BACK/EXIT/CANC plus custom pushbuttons SELALL
+*& ("Select All") and DESELALL ("Deselect All").
 *&---------------------------------------------------------------------*
 TYPES: BEGIN OF ty_obsolete_row,
          chk         TYPE c LENGTH 1,
@@ -45,9 +39,54 @@ TYPES: BEGIN OF ty_obsolete_row,
        END OF ty_obsolete_row.
 TYPES ty_obsolete_row_tab TYPE STANDARD TABLE OF ty_obsolete_row WITH EMPTY KEY.
 
-DATA go_container    TYPE REF TO cl_gui_custom_container.
-DATA go_grid         TYPE REF TO cl_gui_alv_grid.
-DATA gt_obsolete_row TYPE ty_obsolete_row_tab.
+CLASS lcl_obsolete_handler DEFINITION.
+  PUBLIC SECTION.
+    DATA mr_rows TYPE REF TO ty_obsolete_row_tab.
+    DATA mo_alv  TYPE REF TO cl_salv_table.
+    METHODS on_link_click FOR EVENT link_click OF cl_salv_events_table
+      IMPORTING row column.
+    METHODS on_added_function FOR EVENT added_function OF cl_salv_events_table
+      IMPORTING e_salv_function.
+ENDCLASS.
+
+CLASS lcl_obsolete_handler IMPLEMENTATION.
+  METHOD on_link_click.
+    CHECK column = 'CHK'.
+    FIELD-SYMBOLS <row> TYPE ty_obsolete_row.
+    READ TABLE mr_rows->* ASSIGNING <row> INDEX row.
+    CHECK sy-subrc = 0.
+    IF <row>-chk = abap_true.
+      CLEAR <row>-chk.
+    ELSE.
+      <row>-chk = abap_true.
+    ENDIF.
+    mo_alv->refresh( ).
+  ENDMETHOD.
+
+  METHOD on_added_function.
+* Custom toolbar buttons "Select All" / "Deselect All", wired to our
+* own CHK column via the ZOBSDEL_SCR9000 PF-STATUS (see the setup
+* comment above the SET_SCREEN_STATUS call in START-OF-SELECTION) -
+* the ALV's native Select All/Deselect All toolbar functions only
+* affect its own internal row-selection state, never a custom
+* checkbox column, so this is the only way to make bulk-check/uncheck
+* buttons actually flip CHK.
+    CASE e_salv_function.
+      WHEN 'SELALL'.
+        FIELD-SYMBOLS <row_all> TYPE ty_obsolete_row.
+        LOOP AT mr_rows->* ASSIGNING <row_all>.
+          <row_all>-chk = abap_true.
+        ENDLOOP.
+        mo_alv->refresh( ).
+      WHEN 'DESELALL'.
+        FIELD-SYMBOLS <row_none> TYPE ty_obsolete_row.
+        LOOP AT mr_rows->* ASSIGNING <row_none>.
+          CLEAR <row_none>-chk.
+        ENDLOOP.
+        mo_alv->refresh( ).
+    ENDCASE.
+  ENDMETHOD.
+ENDCLASS.
 
 *&---------------------------------------------------------------------*
 *& Code snippet: Resolve physical staging table names for a given
@@ -242,6 +281,21 @@ DATA gt_obsolete_row TYPE ty_obsolete_row_tab.
 *&   TY_OBSOLETE_ROW/_TAB types and GO_CONTAINER/GO_GRID/GT_OBSOLETE_ROW
 *&   data stay at the top, since nothing there depends on the
 *&   selection-screen parameters.
+*& [2026-07-30] Reverted the dynpro-9000/CL_GUI_ALV_GRID approach after
+*&   the Custom Control kept causing problems (activation errors, then
+*&   a blank screen because the element defaulted to 1 line tall).
+*&   Turns out CL_SALV_TABLE never needed a custom dynpro to stop being
+*&   a "dialog box": SET_SCREEN_POPUP is what makes it a small modal
+*&   window - simply not calling it and calling DISPLAY( ) directly
+*&   makes CL_SALV_TABLE fill the whole screen like a real screen, with
+*&   BACK/EXIT/CANC in the PF-STATUS handled entirely by the SALV
+*&   framework (no custom PBO/PAI, no SUBMIT gymnastics needed). Restored
+*&   LCL_OBSOLETE_HANDLER and the CL_SALV_TABLE popup-building code from
+*&   before the dynpro rewrite, removed screen 9000's MODULEs/
+*&   GO_CONTAINER/GO_GRID/GT_OBSOLETE_ROW, and reused the already-created
+*&   PF-STATUS ZOBSDEL_SCR9000 (its BACK/EXIT/CANC/SELALL/DESELALL
+*&   functions all still apply here - screen 9000 and its Custom Control
+*&   are simply no longer called and can be left unused or deleted).
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -509,12 +563,15 @@ START-OF-SELECTION.
 * Example usage – productive mode (delete):
 *--------------------------------------------------------------------*  START [2026-07-30]
 *--------------------------------------------------------------------*
-* Show the actual obsolete objects (chk, ID, Description) on screen
-* 9000 (see the module/setup comment at report level, above) instead
-* of a modal popup - CHK is a real, editable checkbox column
-* (CL_GUI_ALV_GRID fieldcat EDIT + CHECKBOX), pre-set to 'X' for every
-* row before display, so the default is "delete everything obsolete"
-* unless the user unchecks something.
+* Show the actual obsolete objects (chk, ID, Description) in a
+* scrollable CL_SALV_TABLE full-screen list (SET_SCREEN_STATUS +
+* DISPLAY( ), no SET_SCREEN_POPUP - that is what would turn it into a
+* small modal dialog box) with a REAL, clickable checkbox in the CHK
+* column: cell type CHECKBOX_HOTSPOT fires the LINK_CLICK event on
+* click, handled by LCL_OBSOLETE_HANDLER (declared at report level,
+* above) which toggles CHK on the clicked row and calls REFRESH. CHK is
+* pre-set to 'X' for every row before display, so the default is
+* "delete everything obsolete" unless the user unchecks something.
 * The row type (TY_OBSOLETE_ROW/_TAB, declared at report level) is a
 * fixed, generic (chk, id, description) structure - not dynamically
 * built per entity - since the object's own key field name
@@ -530,8 +587,8 @@ START-OF-SELECTION.
 * lt_obsolete_ids was already resolved above (needed there to build
 * lv_id_in_clause) - reused here as-is instead of re-reading the check
 * table a second time.
-    CLEAR gt_obsolete_row.
-    DATA lv_description TYPE string.
+    DATA lt_obsolete_row TYPE ty_obsolete_row_tab.
+    DATA lv_description  TYPE string.
 
     READ TABLE lt_txt_tables INDEX 1 INTO DATA(lv_txt_tabname).
 
@@ -548,23 +605,95 @@ START-OF-SELECTION.
         ENDTRY.
       ENDIF.
 
-      APPEND VALUE ty_obsolete_row( chk = abap_true id = lv_obsolete_id description = lv_description ) TO gt_obsolete_row.
+      APPEND VALUE ty_obsolete_row( chk = abap_true id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
     ENDLOOP.
 
-    CALL SCREEN 9000.
-
-    " Reached only via the CONF ("Continue") button on screen 9000 -
-    " BACK/EXIT/CANC jump straight back to the selection screen
-    " (LEAVE TO SCREEN 1000 in MODULE user_command_9000) before this
-    " line, so nothing below runs and no data is touched.
+* Default: treat all obsolete objects as selected, so if the list
+* cannot be shown at all we still fall back to the pre-selection
+* behaviour (delete everything obsolete) instead of silently deleting
+* nothing.
     CLEAR lv_id_in_clause.
-    LOOP AT gt_obsolete_row INTO DATA(lv_selected_row) WHERE chk = abap_true.
+    LOOP AT lt_obsolete_ids INTO lv_obsolete_id.
       IF lv_id_in_clause IS INITIAL.
-        lv_id_in_clause = |'{ lv_selected_row-id }'|.
+        lv_id_in_clause = |'{ lv_obsolete_id }'|.
       ELSE.
-        lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_selected_row-id }'|.
+        lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_obsolete_id }'|.
       ENDIF.
     ENDLOOP.
+
+    IF lt_obsolete_row IS NOT INITIAL.
+      TRY.
+          cl_salv_table=>factory(
+            IMPORTING r_salv_table = DATA(lo_obsolete_alv)
+            CHANGING  t_table      = lt_obsolete_row ).
+        CATCH cx_salv_msg INTO DATA(lx_salv_msg).
+          WRITE: |Could not display the detailed review list ({ lx_salv_msg->get_text( ) }) - proceeding with all obsolete records selected.|, /.
+      ENDTRY.
+
+      IF lo_obsolete_alv IS BOUND.
+        lo_obsolete_alv->get_columns( )->set_optimize( abap_true ).
+
+        DATA(lo_chk_column) = lo_obsolete_alv->get_columns( )->get_column( 'CHK' ).
+        lo_chk_column->set_short_text( 'Del?' ).
+        lo_chk_column->set_medium_text( 'Delete?' ).
+        lo_chk_column->set_long_text( 'Delete this object?' ).
+        CAST cl_salv_column_list( lo_chk_column )->set_cell_type( if_salv_c_cell_type=>checkbox_hotspot ).
+
+        DATA(lo_id_column) = lo_obsolete_alv->get_columns( )->get_column( 'ID' ).
+        lo_id_column->set_short_text( 'ID' ).
+        lo_id_column->set_medium_text( 'Identifier' ).
+        lo_id_column->set_long_text( 'Identifier' ).
+
+        DATA(lo_description_column) = lo_obsolete_alv->get_columns( )->get_column( 'DESCRIPTION' ).
+        lo_description_column->set_short_text( 'Descr.' ).
+        lo_description_column->set_medium_text( 'Description' ).
+        lo_description_column->set_long_text( 'Description' ).
+
+        DATA(lo_obsolete_handler) = NEW lcl_obsolete_handler( ).
+        GET REFERENCE OF lt_obsolete_row INTO lo_obsolete_handler->mr_rows.
+        lo_obsolete_handler->mo_alv = lo_obsolete_alv.
+        SET HANDLER lo_obsolete_handler->on_link_click FOR lo_obsolete_alv->get_event( ).
+        SET HANDLER lo_obsolete_handler->on_added_function FOR lo_obsolete_alv->get_event( ).
+
+* Requires a PF-STATUS named ZOBSDEL_SCR9000 to exist in THIS program
+* (created manually via SE38 -> Goto -> PF-Status, since GUI statuses
+* are Menu Painter design-time objects and cannot be created by editing
+* this source file). It must contain standard functions BACK/EXIT/CANC
+* plus two application toolbar function codes SELALL ("Select All")
+* and DESELALL ("Deselect All"). Without it, SET_SCREEN_STATUS raises a
+* screen-status-not-found runtime error, so it is wrapped in TRY/CATCH
+* to fail gracefully (individual row checkboxes still work either way).
+        TRY.
+            lo_obsolete_alv->set_screen_status(
+              pfstatus      = 'ZOBSDEL_SCR9000'
+              report        = sy-repid
+              set_functions = lo_obsolete_alv->c_functions_all ).
+          CATCH cx_root INTO DATA(lx_salv_status).
+            WRITE: |Could not load PF-STATUS ZOBSDEL_SCR9000 ({ lx_salv_status->get_text( ) }) - Back/Select All/Deselect All buttons unavailable; individual row checkboxes still work.|, /.
+        ENDTRY.
+
+* No SET_SCREEN_POPUP call here on purpose: that is what would turn
+* this into a small modal dialog box. Leaving it out makes DISPLAY( )
+* fill the whole screen instead, like a normal full-screen ALV list.
+        lo_obsolete_alv->display( ).
+
+        " display( ) only returns once the user leaves this screen
+        " (BACK/EXIT/CANC, or any other way of ending it). The handler
+        " toggled CHK directly on lt_obsolete_row's memory via the
+        " GET REFERENCE OF binding above, so it already reflects every
+        " click made while the list was open.
+        CLEAR lv_id_in_clause.
+        LOOP AT lt_obsolete_row INTO DATA(lv_selected_row) WHERE chk = abap_true.
+          IF lv_id_in_clause IS INITIAL.
+            lv_id_in_clause = |'{ lv_selected_row-id }'|.
+          ELSE.
+            lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_selected_row-id }'|.
+          ENDIF.
+        ENDLOOP.
+      ENDIF.
+    ELSE.
+      WRITE: |No detailed obsolete-object list available for review; proceeding with all obsolete records selected.|, /.
+    ENDIF.
 
     IF lv_id_in_clause IS INITIAL.
       WRITE: |No objects were selected for deletion - aborting, nothing deleted.|, /.
@@ -655,86 +784,6 @@ START-OF-SELECTION.
     ENDLOOP.
   ENDIF.
 *----------------------------------------------------------------------*
-
-*&---------------------------------------------------------------------*
-*& PBO/PAI modules for the obsolete-object review screen (dynpro 9000,
-*& see the setup comment above TY_OBSOLETE_ROW near the top of this
-*& program). Placed here, after the SELECTION-SCREEN block, because
-*& ABAP resolves global names top-down within a single program - a
-*& MODULE textually positioned before PARAMETERS p_model/p_entity/...
-*& are declared cannot see them ("Field P_MODEL is unknown"), so these
-*& could not stay at the very top of the source together with
-*& TY_OBSOLETE_ROW/GT_OBSOLETE_ROW as originally placed.
-*&---------------------------------------------------------------------*
-MODULE status_9000 OUTPUT.
-  SET PF-STATUS 'ZOBSDEL_SCR9000'.
-
-  IF go_container IS NOT BOUND.
-    CREATE OBJECT go_container
-      EXPORTING container_name = 'CUSTOM_CTRL'.
-    CREATE OBJECT go_grid
-      EXPORTING i_parent = go_container.
-
-    DATA lt_fcat TYPE lvc_t_fcat.
-    APPEND VALUE #( fieldname = 'CHK' checkbox = abap_true edit = abap_true outputlen = 4
-                     scrtext_s = 'Del?' scrtext_m = 'Delete?' scrtext_l = 'Delete this object?' ) TO lt_fcat.
-    APPEND VALUE #( fieldname = 'ID' outputlen = 20
-                     scrtext_s = 'ID' scrtext_m = 'Identifier' scrtext_l = 'Identifier' ) TO lt_fcat.
-    APPEND VALUE #( fieldname = 'DESCRIPTION' outputlen = 40
-                     scrtext_s = 'Descr.' scrtext_m = 'Description' scrtext_l = 'Description' ) TO lt_fcat.
-
-    go_grid->set_table_for_first_display(
-      EXPORTING is_layout       = VALUE lvc_s_layo( cwidth_opt = abap_true )
-      CHANGING  it_outtab       = gt_obsolete_row
-                it_fieldcatalog = lt_fcat ).
-  ELSE.
-    go_grid->refresh_table_display( ).
-  ENDIF.
-ENDMODULE.
-
-MODULE user_command_9000 INPUT.
-  go_grid->check_changed_data( ).
-
-  CASE sy-ucomm.
-    WHEN 'BACK' OR 'EXIT' OR 'CANC'.
-* LEAVE TO SCREEN 1000 does NOT work here: that raises "Selection
-* screen ... 1000 was not called using CALL SELECTION-SCREEN" at
-* runtime, because the report's own selection screen is opened
-* automatically by the ABAP runtime (via SE38/SA38 execute), not via
-* an explicit CALL SELECTION-SCREEN statement in this program - LEAVE
-* TO SCREEN can only jump to a screen that was entered that way.
-* SUBMIT ... VIA SELECTION-SCREEN restarts the report and forces the
-* selection screen to display again instead of auto-executing, with
-* WITH carrying the user's current parameter values forward so it
-* feels like "going back" rather than starting over blank.
-      SUBMIT z_bg_sap_recommended_deletion VIA SELECTION-SCREEN
-        WITH p_model  = p_model
-        WITH p_entity = p_entity
-        WITH p_edtn   = p_edtn
-        WITH p_delall = p_delall
-        WITH p_kattr1 = p_kattr1
-        WITH p_kval1  = p_kval1
-        WITH p_kattr2 = p_kattr2
-        WITH p_kval2  = p_kval2
-        WITH p_kattr3 = p_kattr3
-        WITH p_kval3  = p_kval3
-        WITH p_test   = p_test.
-    WHEN 'CONF'.
-      LEAVE SCREEN.
-    WHEN 'SELALL'.
-      LOOP AT gt_obsolete_row ASSIGNING FIELD-SYMBOL(<row_all>).
-        <row_all>-chk = abap_true.
-      ENDLOOP.
-      go_grid->refresh_table_display( ).
-    WHEN 'DESELALL'.
-      LOOP AT gt_obsolete_row ASSIGNING FIELD-SYMBOL(<row_none>).
-        CLEAR <row_none>-chk.
-      ENDLOOP.
-      go_grid->refresh_table_display( ).
-  ENDCASE.
-
-  CLEAR sy-ucomm.
-ENDMODULE.
 
 *&---------------------------------------------------------------------*
 *& FORM f4_entity
