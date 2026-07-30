@@ -109,21 +109,28 @@ REPORT z_bg_sap_recommended_deletion.
 *&   "No obsolete (USMD_OBS_TCK = 'X') records found ..." - previously
 *&   test mode had this same mismatch and would show misleading counts
 *&   even with nothing obsolete.
-*& [2026-07-30] Made the review ALV interactive: it now shows a
-*&   "Delete?" checkbox per obsolete object (checked by default,
-*&   editable in place) instead of being a read-only list. The ALV
-*&   popup is shown before the count preview/confirmation instead of
-*&   after, so lv_id_in_clause is rebuilt from only the still-checked
-*&   rows once the popup closes, and everything downstream (preview
-*&   COUNT, the Yes/No total, and the productive DELETE) is restricted
-*&   to that user-selected subset. If nothing is left checked, the
-*&   report stops with "No objects were selected for deletion". This
-*&   also fixed a related gap: the check table's WHERE only ever
-*&   filtered on USMD_OBS_TCK = 'X', never on the ID list, so it would
-*&   have deleted every obsolete row in the check table regardless of
-*&   what the user unchecked while other tables respected the
-*&   selection - the check table's WHERE now additionally requires
-*&   the entity field to be IN the selected-ID list.
+*& [2026-07-30] Made the review ALV interactive: every row now shows
+*&   CL_SALV_TABLE's own built-in multi-select row checkboxes (turned
+*&   on via GET_SELECTIONS( )->SET_SELECTION_MODE( ...=>multiple ) and
+*&   pre-checked for all rows via SET_SELECTED_ROWS), instead of being
+*&   a read-only list. (An earlier attempt tried to fake a checkbox via
+*&   a custom "selected" column plus CL_SALV_COLUMN_TABLE=>SET_CELL_TYPE/
+*&   SET_EDITABLE - those methods don't exist/aren't accessible there
+*&   and the system rejected the syntax; this uses the ALV's real
+*&   selection-checkbox mechanism instead.) The ALV popup is shown
+*&   before the count preview/confirmation instead of after, so
+*&   lv_id_in_clause is rebuilt (via GET_SELECTED_ROWS) from only the
+*&   still-checked rows once the popup closes, and everything
+*&   downstream (preview COUNT, the Yes/No total, and the productive
+*&   DELETE) is restricted to that user-selected subset. If nothing is
+*&   left checked, the report stops with "No objects were selected for
+*&   deletion". This also fixed a related gap: the check table's WHERE
+*&   only ever filtered on USMD_OBS_TCK = 'X', never on the ID list, so
+*&   it would have deleted every obsolete row in the check table
+*&   regardless of what the user unchecked while other tables
+*&   respected the selection - the check table's WHERE now
+*&   additionally requires the entity field to be IN the selected-ID
+*&   list.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -392,15 +399,19 @@ START-OF-SELECTION.
 *--------------------------------------------------------------------*  START [2026-07-30]
 *--------------------------------------------------------------------*
 * Show the actual obsolete objects (ID + Description) in a scrollable
-* ALV popup, with an editable "Delete?" checkbox per row (checked by
-* default), so the user can pick which obsolete objects actually get
-* deleted. The ALV's row type is a fixed, generic (selected, id,
-* description) structure - not dynamically built per entity - since
-* the object's own key field name (lv_entity_field, e.g.
-* /1MD/0GCCTRG) changes per entity/model and building a dynamic ALV
-* structure per entity is unnecessary extra complexity here; we just
-* move the dynamically-read ID value into the generic "id" component
-* instead.
+* ALV popup with a row-selection checkbox column in front of each row
+* (CL_SALV_TABLE's own built-in multi-select checkboxes, turned on via
+* GET_SELECTIONS( )->SET_SELECTION_MODE - not a custom editable field;
+* CL_SALV_COLUMN_TABLE has no SET_EDITABLE/accessible SET_CELL_TYPE
+* method, so an ad-hoc "selected" column cannot be made editable this
+* way), pre-checked for every row by default, so the user can uncheck
+* any obsolete objects they do NOT want deleted. The ALV's row type is
+* a fixed, generic (id, description) structure - not dynamically
+* built per entity - since the object's own key field name
+* (lv_entity_field, e.g. /1MD/0GCCTRG) changes per entity/model and
+* building a dynamic ALV structure per entity is unnecessary extra
+* complexity here; we just move the dynamically-read ID value into
+* the generic "id" component instead.
 * Description comes from the text table's TXTSH field (same field
 * name on every entity's text table), matched by the same dynamic ID
 * field + edition (the text table does not carry USMD_OBS_TCK, so it
@@ -410,7 +421,6 @@ START-OF-SELECTION.
 * (needed there to build lv_id_in_clause) - reused here as-is instead
 * of re-reading the check table a second time.
     TYPES: BEGIN OF ty_obsolete_row,
-             selected    TYPE abap_bool,
              id          TYPE string,
              description TYPE string,
            END OF ty_obsolete_row.
@@ -432,7 +442,20 @@ START-OF-SELECTION.
         ENDTRY.
       ENDIF.
 
-      APPEND VALUE ty_obsolete_row( selected = abap_true id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
+      APPEND VALUE ty_obsolete_row( id = lv_obsolete_id description = lv_description ) TO lt_obsolete_row.
+    ENDLOOP.
+
+* Default: treat all obsolete objects as selected, so if the ALV
+* cannot be built at all we still fall back to the pre-selection
+* behaviour (delete everything obsolete) instead of silently deleting
+* nothing.
+    CLEAR lv_id_in_clause.
+    LOOP AT lt_obsolete_ids INTO lv_obsolete_id.
+      IF lv_id_in_clause IS INITIAL.
+        lv_id_in_clause = |'{ lv_obsolete_id }'|.
+      ELSE.
+        lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_obsolete_id }'|.
+      ENDIF.
     ENDLOOP.
 
     IF lt_obsolete_row IS NOT INITIAL.
@@ -446,16 +469,16 @@ START-OF-SELECTION.
 
       IF lo_obsolete_alv IS BOUND.
         lo_obsolete_alv->get_columns( )->set_optimize( abap_true ).
+        lo_obsolete_alv->get_selections( )->set_selection_mode( if_salv_c_selection_mode=>multiple ).
 
-        TRY.
-            DATA(lo_col_selected) = lo_obsolete_alv->get_columns( )->get_column( 'SELECTED' ).
-            lo_col_selected->set_cell_type( if_salv_c_cell_type=>checkbox ).
-            lo_col_selected->set_editable( abap_true ).
-            lo_col_selected->set_short_text( 'Delete?' ).
-            lo_col_selected->set_medium_text( 'Delete?' ).
-            lo_col_selected->set_long_text( 'Delete this object?' ).
-          CATCH cx_salv_not_found.
-        ENDTRY.
+        " Pre-check every row (1..n) so the default is "delete everything
+        " obsolete", matching the previous behaviour unless the user
+        " unchecks something.
+        DATA lt_all_rows TYPE salv_t_row.
+        DO lines( lt_obsolete_row ) TIMES.
+          APPEND sy-index TO lt_all_rows.
+        ENDDO.
+        lo_obsolete_alv->get_selections( )->set_selected_rows( lt_all_rows ).
 
         lo_obsolete_alv->set_screen_popup(
           start_column = 5
@@ -463,23 +486,26 @@ START-OF-SELECTION.
           start_line   = 3
           end_line     = 25 ).
         lo_obsolete_alv->display( ).
+
+        " Modal popup - display( ) only returns once the user closes it,
+        " so the selection below reflects whatever was (un)checked.
+        DATA(lt_selected_rows) = lo_obsolete_alv->get_selections( )->get_selected_rows( ).
+
+        CLEAR lv_id_in_clause.
+        LOOP AT lt_selected_rows INTO DATA(lv_row_idx).
+          READ TABLE lt_obsolete_row INDEX lv_row_idx INTO DATA(lv_selected_row).
+          IF sy-subrc = 0.
+            IF lv_id_in_clause IS INITIAL.
+              lv_id_in_clause = |'{ lv_selected_row-id }'|.
+            ELSE.
+              lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_selected_row-id }'|.
+            ENDIF.
+          ENDIF.
+        ENDLOOP.
       ENDIF.
     ELSE.
       WRITE: |No detailed obsolete-object list available for review; proceeding with all obsolete records selected.|, /.
     ENDIF.
-
-* Rebuild lv_id_in_clause from only the rows still checked once the
-* popup closes. cl_salv_table=>factory binds lt_obsolete_row by
-* reference, so edits made to the editable checkbox column while the
-* popup was open are already reflected in lt_obsolete_row here.
-    CLEAR lv_id_in_clause.
-    LOOP AT lt_obsolete_row INTO DATA(lv_obsolete_row) WHERE selected = abap_true.
-      IF lv_id_in_clause IS INITIAL.
-        lv_id_in_clause = |'{ lv_obsolete_row-id }'|.
-      ELSE.
-        lv_id_in_clause = |{ lv_id_in_clause }, '{ lv_obsolete_row-id }'|.
-      ENDIF.
-    ENDLOOP.
 
     IF lv_id_in_clause IS INITIAL.
       WRITE: |No objects were selected for deletion - aborting, nothing deleted.|, /.
