@@ -84,6 +84,15 @@ CLASS lcl_obsolete_handler IMPLEMENTATION.
           CLEAR <row_none>-chk.
         ENDLOOP.
         mo_alv->refresh( ).
+      WHEN 'CONF'.
+* CONF ("Continue") is a custom function, unlike BACK/EXIT/CANC which
+* CL_SALV_TABLE's own framework recognizes and closes automatically -
+* for any other function code it just fires this event and otherwise
+* does nothing, so without this the screen never closed and control
+* never returned to the code after DISPLAY( ). LEAVE TO SCREEN 0 ends
+* the ALV's own internal dynpro the same way BACK/EXIT/CANC do,
+* handing control back right after the DISPLAY( ) call.
+        LEAVE TO SCREEN 0.
     ENDCASE.
   ENDMETHOD.
 ENDCLASS.
@@ -296,6 +305,19 @@ ENDCLASS.
 *&   PF-STATUS ZOBSDEL_SCR9000 (its BACK/EXIT/CANC/SELALL/DESELALL
 *&   functions all still apply here - screen 9000 and its Custom Control
 *&   are simply no longer called and can be left unused or deleted).
+*& [2026-07-30] Fixed two follow-up issues found after the revert above:
+*&   (1) Descriptions showed blank with no visible cause - the TRY/CATCH
+*&   around the TXTSH SELECT silently cleared lv_description on any
+*&   dynamic-SQL failure. Now writes the real exception text (once, not
+*&   per row) and flags when no physical text table was found at all.
+*&   (2) The custom "Continue" (CONF) toolbar button did nothing -
+*&   unlike BACK/EXIT/CANC, which CL_SALV_TABLE's own framework
+*&   recognizes and closes automatically, a custom function code only
+*&   fires ADDED_FUNCTION and otherwise leaves the screen open. Added
+*&   WHEN 'CONF'. LEAVE TO SCREEN 0. to ON_ADDED_FUNCTION so Continue
+*&   closes the review list the same way BACK/EXIT/CANC do, handing
+*&   control back to the code after DISPLAY( ) so the count-preview/
+*&   POPUP_TO_CONFIRM step actually runs.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
