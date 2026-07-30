@@ -49,76 +49,6 @@ DATA go_container    TYPE REF TO cl_gui_custom_container.
 DATA go_grid         TYPE REF TO cl_gui_alv_grid.
 DATA gt_obsolete_row TYPE ty_obsolete_row_tab.
 
-MODULE status_9000 OUTPUT.
-  SET PF-STATUS 'ZOBSDEL_SCR9000'.
-
-  IF go_container IS NOT BOUND.
-    CREATE OBJECT go_container
-      EXPORTING container_name = 'CUSTOM_CTRL'.
-    CREATE OBJECT go_grid
-      EXPORTING i_parent = go_container.
-
-    DATA lt_fcat TYPE lvc_t_fcat.
-    APPEND VALUE #( fieldname = 'CHK' checkbox = abap_true edit = abap_true outputlen = 4
-                     scrtext_s = 'Del?' scrtext_m = 'Delete?' scrtext_l = 'Delete this object?' ) TO lt_fcat.
-    APPEND VALUE #( fieldname = 'ID' outputlen = 20
-                     scrtext_s = 'ID' scrtext_m = 'Identifier' scrtext_l = 'Identifier' ) TO lt_fcat.
-    APPEND VALUE #( fieldname = 'DESCRIPTION' outputlen = 40
-                     scrtext_s = 'Descr.' scrtext_m = 'Description' scrtext_l = 'Description' ) TO lt_fcat.
-
-    go_grid->set_table_for_first_display(
-      EXPORTING is_layout       = VALUE lvc_s_layo( cwidth_opt = abap_true )
-      CHANGING  it_outtab       = gt_obsolete_row
-                it_fieldcatalog = lt_fcat ).
-  ELSE.
-    go_grid->refresh_table_display( ).
-  ENDIF.
-ENDMODULE.
-
-MODULE user_command_9000 INPUT.
-  go_grid->check_changed_data( ).
-
-  CASE sy-ucomm.
-    WHEN 'BACK' OR 'EXIT' OR 'CANC'.
-* LEAVE TO SCREEN 1000 does NOT work here: that raises "Selection
-* screen ... 1000 was not called using CALL SELECTION-SCREEN" at
-* runtime, because the report's own selection screen is opened
-* automatically by the ABAP runtime (via SE38/SA38 execute), not via
-* an explicit CALL SELECTION-SCREEN statement in this program - LEAVE
-* TO SCREEN can only jump to a screen that was entered that way.
-* SUBMIT ... VIA SELECTION-SCREEN restarts the report and forces the
-* selection screen to display again instead of auto-executing, with
-* WITH carrying the user's current parameter values forward so it
-* feels like "going back" rather than starting over blank.
-      SUBMIT z_bg_sap_recommended_deletion VIA SELECTION-SCREEN
-        WITH p_model  = p_model
-        WITH p_entity = p_entity
-        WITH p_edtn   = p_edtn
-        WITH p_delall = p_delall
-        WITH p_kattr1 = p_kattr1
-        WITH p_kval1  = p_kval1
-        WITH p_kattr2 = p_kattr2
-        WITH p_kval2  = p_kval2
-        WITH p_kattr3 = p_kattr3
-        WITH p_kval3  = p_kval3
-        WITH p_test   = p_test.
-    WHEN 'CONF'.
-      LEAVE SCREEN.
-    WHEN 'SELALL'.
-      LOOP AT gt_obsolete_row ASSIGNING FIELD-SYMBOL(<row_all>).
-        <row_all>-chk = abap_true.
-      ENDLOOP.
-      go_grid->refresh_table_display( ).
-    WHEN 'DESELALL'.
-      LOOP AT gt_obsolete_row ASSIGNING FIELD-SYMBOL(<row_none>).
-        CLEAR <row_none>-chk.
-      ENDLOOP.
-      go_grid->refresh_table_display( ).
-  ENDCASE.
-
-  CLEAR sy-ucomm.
-ENDMODULE.
-
 *&---------------------------------------------------------------------*
 *& Code snippet: Resolve physical staging table names for a given
 *& MDG entity and edition.
@@ -300,6 +230,18 @@ ENDMODULE.
 *&   SUBMIT z_bg_sap_recommended_deletion VIA SELECTION-SCREEN, passing
 *&   every current parameter value via WITH so the selection screen
 *&   reappears pre-filled instead of blank.
+*& [2026-07-30] Fixed an activation syntax error: "Field P_MODEL is
+*&   unknown" (and the same for the other PARAMETERS) at the SUBMIT ...
+*&   WITH lines. MODULE status_9000/user_command_9000 were originally
+*&   declared at the very top of the program, alongside TY_OBSOLETE_ROW
+*&   - but ABAP resolves global names top-down within one program, so a
+*&   MODULE positioned before PARAMETERS p_model etc. are declared
+*&   cannot reference them yet. Moved both MODULEs down to just after
+*&   the end of START-OF-SELECTION (before FORM f4_entity), i.e. after
+*&   every PARAMETERS statement in the SELECTION-SCREEN block. The
+*&   TY_OBSOLETE_ROW/_TAB types and GO_CONTAINER/GO_GRID/GT_OBSOLETE_ROW
+*&   data stay at the top, since nothing there depends on the
+*&   selection-screen parameters.
 *&---------------------------------------------------------------------*
 
 " -----------------------------------------------------------------------
@@ -713,6 +655,86 @@ START-OF-SELECTION.
     ENDLOOP.
   ENDIF.
 *----------------------------------------------------------------------*
+
+*&---------------------------------------------------------------------*
+*& PBO/PAI modules for the obsolete-object review screen (dynpro 9000,
+*& see the setup comment above TY_OBSOLETE_ROW near the top of this
+*& program). Placed here, after the SELECTION-SCREEN block, because
+*& ABAP resolves global names top-down within a single program - a
+*& MODULE textually positioned before PARAMETERS p_model/p_entity/...
+*& are declared cannot see them ("Field P_MODEL is unknown"), so these
+*& could not stay at the very top of the source together with
+*& TY_OBSOLETE_ROW/GT_OBSOLETE_ROW as originally placed.
+*&---------------------------------------------------------------------*
+MODULE status_9000 OUTPUT.
+  SET PF-STATUS 'ZOBSDEL_SCR9000'.
+
+  IF go_container IS NOT BOUND.
+    CREATE OBJECT go_container
+      EXPORTING container_name = 'CUSTOM_CTRL'.
+    CREATE OBJECT go_grid
+      EXPORTING i_parent = go_container.
+
+    DATA lt_fcat TYPE lvc_t_fcat.
+    APPEND VALUE #( fieldname = 'CHK' checkbox = abap_true edit = abap_true outputlen = 4
+                     scrtext_s = 'Del?' scrtext_m = 'Delete?' scrtext_l = 'Delete this object?' ) TO lt_fcat.
+    APPEND VALUE #( fieldname = 'ID' outputlen = 20
+                     scrtext_s = 'ID' scrtext_m = 'Identifier' scrtext_l = 'Identifier' ) TO lt_fcat.
+    APPEND VALUE #( fieldname = 'DESCRIPTION' outputlen = 40
+                     scrtext_s = 'Descr.' scrtext_m = 'Description' scrtext_l = 'Description' ) TO lt_fcat.
+
+    go_grid->set_table_for_first_display(
+      EXPORTING is_layout       = VALUE lvc_s_layo( cwidth_opt = abap_true )
+      CHANGING  it_outtab       = gt_obsolete_row
+                it_fieldcatalog = lt_fcat ).
+  ELSE.
+    go_grid->refresh_table_display( ).
+  ENDIF.
+ENDMODULE.
+
+MODULE user_command_9000 INPUT.
+  go_grid->check_changed_data( ).
+
+  CASE sy-ucomm.
+    WHEN 'BACK' OR 'EXIT' OR 'CANC'.
+* LEAVE TO SCREEN 1000 does NOT work here: that raises "Selection
+* screen ... 1000 was not called using CALL SELECTION-SCREEN" at
+* runtime, because the report's own selection screen is opened
+* automatically by the ABAP runtime (via SE38/SA38 execute), not via
+* an explicit CALL SELECTION-SCREEN statement in this program - LEAVE
+* TO SCREEN can only jump to a screen that was entered that way.
+* SUBMIT ... VIA SELECTION-SCREEN restarts the report and forces the
+* selection screen to display again instead of auto-executing, with
+* WITH carrying the user's current parameter values forward so it
+* feels like "going back" rather than starting over blank.
+      SUBMIT z_bg_sap_recommended_deletion VIA SELECTION-SCREEN
+        WITH p_model  = p_model
+        WITH p_entity = p_entity
+        WITH p_edtn   = p_edtn
+        WITH p_delall = p_delall
+        WITH p_kattr1 = p_kattr1
+        WITH p_kval1  = p_kval1
+        WITH p_kattr2 = p_kattr2
+        WITH p_kval2  = p_kval2
+        WITH p_kattr3 = p_kattr3
+        WITH p_kval3  = p_kval3
+        WITH p_test   = p_test.
+    WHEN 'CONF'.
+      LEAVE SCREEN.
+    WHEN 'SELALL'.
+      LOOP AT gt_obsolete_row ASSIGNING FIELD-SYMBOL(<row_all>).
+        <row_all>-chk = abap_true.
+      ENDLOOP.
+      go_grid->refresh_table_display( ).
+    WHEN 'DESELALL'.
+      LOOP AT gt_obsolete_row ASSIGNING FIELD-SYMBOL(<row_none>).
+        CLEAR <row_none>-chk.
+      ENDLOOP.
+      go_grid->refresh_table_display( ).
+  ENDCASE.
+
+  CLEAR sy-ucomm.
+ENDMODULE.
 
 *&---------------------------------------------------------------------*
 *& FORM f4_entity
